@@ -20,12 +20,18 @@
  */
 
 import express from 'express';
-import { body, param, query } from 'express-validator';
+import { body, query } from 'express-validator';
 import * as controller from '../controllers/product.controller.js';
-import { auth } from '../middleware/auth.js';
-import { validateRequest } from '../middleware/validateRequest.js';
-import { cacheMiddleware } from '../middleware/cache.js';
-import { recordProductOperation } from '../middleware/metrics.js';
+import {
+  authenticate,
+  authorize,
+  validate,
+  validateId,
+  validatePagination,
+  cacheMiddleware,
+  recordOperation,
+  asyncHandler
+} from '@log430/shared';
 
 const router = express.Router();
 
@@ -52,20 +58,19 @@ const router = express.Router();
  */
 router.get('/',
   // Input validation for query parameters
-  query('page').optional().isInt({ min: 1 }).toInt(),
-  query('size').optional().isInt({ min: 1, max: 100 }).toInt(),
-  query('sort').optional().isString().matches(/^[+-]?(name|price|id)$/),
-  query('search').optional().isString().trim(),
-  query('minPrice').optional().isFloat({ min: 0 }),
-  query('maxPrice').optional().isFloat({ min: 0 }),
-  validateRequest,
+  validate([
+    ...validatePagination(),
+    query('sort').optional().isString().matches(/^[+-]?(name|price|id)$/),
+    query('search').optional().isString().trim(),
+    query('minPrice').optional().isFloat({ min: 0 }),
+    query('maxPrice').optional().isFloat({ min: 0 })
+  ]),
   cacheMiddleware(300), // Cache for 5 minutes
-  (req, res, next) => {
+  asyncHandler(async (req, res, next) => {
     // Record metrics for product catalog access
-    recordProductOperation(null, 'list');
-    next();
-  },
-  controller.list
+    recordOperation('product_list', 'success');
+    await controller.list(req, res, next);
+  })
 );
 
 /**
@@ -92,15 +97,15 @@ router.get('/',
  */
 router.get('/:id',
   // Validate product ID parameter
-  param('id').isInt({ min: 1 }).withMessage('Product ID must be a positive integer'),
-  validateRequest,
+  validate([
+    ...validateId()
+  ]),
   cacheMiddleware(300), // Cache for 5 minutes
-  (req, res, next) => {
+  asyncHandler(async (req, res, next) => {
     // Record metrics for individual product access
-    recordProductOperation(req.params.id, 'view');
-    next();
-  },
-  controller.get
+    recordOperation('product_view', 'success');
+    await controller.get(req, res, next);
+  })
 );
 
 /**
@@ -123,28 +128,29 @@ router.get('/:id',
  */
 router.post('/',
   // Authentication required for product creation
-  auth,
+  authenticate,
+  authorize(['admin']),
   // Input validation for product data
-  body('name')
-    .isString()
-    .trim()
-    .notEmpty()
-    .withMessage('Product name is required and cannot be empty'),
-  body('price')
-    .isFloat({ min: 0 })
-    .withMessage('Product price must be a non-negative number'),
-  body('description')
-    .optional()
-    .isString()
-    .trim()
-    .withMessage('Product description must be a string'),
-  validateRequest,
-  (req, res, next) => {
+  validate([
+    body('name')
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage('Product name is required and cannot be empty'),
+    body('price')
+      .isFloat({ min: 0 })
+      .withMessage('Product price must be a non-negative number'),
+    body('description')
+      .optional()
+      .isString()
+      .trim()
+      .withMessage('Product description must be a string')
+  ]),
+  asyncHandler(async (req, res, next) => {
     // Record metrics for product creation
-    recordProductOperation(null, 'create');
-    next();
-  },
-  controller.create
+    recordOperation('product_create', 'success');
+    await controller.create(req, res, next);
+  })
 );
 
 /**
@@ -170,32 +176,32 @@ router.post('/',
  */
 router.put('/:id',
   // Authentication required for product updates
-  auth,
-  // Validate product ID parameter
-  param('id').isInt({ min: 1 }).withMessage('Product ID must be a positive integer'),
-  // Input validation for update data (all optional)
-  body('name')
-    .optional()
-    .isString()
-    .trim()
-    .notEmpty()
-    .withMessage('Product name cannot be empty if provided'),
-  body('price')
-    .optional()
-    .isFloat({ min: 0 })
-    .withMessage('Product price must be a non-negative number'),
-  body('description')
-    .optional()
-    .isString()
-    .trim()
-    .withMessage('Product description must be a string'),
-  validateRequest,
-  (req, res, next) => {
+  authenticate,
+  authorize(['admin']),
+  // Validate product ID parameter and update data
+  validate([
+    ...validateId(),
+    body('name')
+      .optional()
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage('Product name cannot be empty if provided'),
+    body('price')
+      .optional()
+      .isFloat({ min: 0 })
+      .withMessage('Product price must be a non-negative number'),
+    body('description')
+      .optional()
+      .isString()
+      .trim()
+      .withMessage('Product description must be a string')
+  ]),
+  asyncHandler(async (req, res, next) => {
     // Record metrics for product update
-    recordProductOperation(req.params.id, 'update');
-    next();
-  },
-  controller.update
+    recordOperation('product_update', 'success');
+    await controller.update(req, res, next);
+  })
 );
 
 /**
@@ -221,16 +227,17 @@ router.put('/:id',
  */
 router.delete('/:id',
   // Authentication required for product deletion
-  auth,
+  authenticate,
+  authorize(['admin']),
   // Validate product ID parameter
-  param('id').isInt({ min: 1 }).withMessage('Product ID must be a positive integer'),
-  validateRequest,
-  (req, res, next) => {
+  validate([
+    ...validateId()
+  ]),
+  asyncHandler(async (req, res, next) => {
     // Record metrics for product deletion
-    recordProductOperation(req.params.id, 'delete');
-    next();
-  },
-  controller.remove
+    recordOperation('product_delete', 'success');
+    await controller.remove(req, res, next);
+  })
 );
 
 /**
@@ -250,14 +257,14 @@ router.delete('/:id',
  * - Cart service for product validation
  */
 router.get('/:id/availability',
-  param('id').isInt({ min: 1 }).withMessage('Product ID must be a positive integer'),
-  validateRequest,
+  validate([
+    ...validateId()
+  ]),
   cacheMiddleware(60), // Cache for 1 minute (stock data changes frequently)
-  (req, res, next) => {
-    recordProductOperation(req.params.id, 'availability_check');
-    next();
-  },
-  controller.getAvailability
+  asyncHandler(async (req, res, next) => {
+    recordOperation('product_availability_check', 'success');
+    await controller.getAvailability(req, res, next);
+  })
 );
 
 /**
@@ -282,20 +289,19 @@ router.get('/:id/availability',
  * - Inventory management queries
  */
 router.get('/search',
-  query('q').optional().isString().trim(),
-  query('category').optional().isString().trim(),
-  query('minPrice').optional().isFloat({ min: 0 }),
-  query('maxPrice').optional().isFloat({ min: 0 }),
-  query('inStock').optional().isBoolean(),
-  query('page').optional().isInt({ min: 1 }).toInt(),
-  query('size').optional().isInt({ min: 1, max: 100 }).toInt(),
-  validateRequest,
+  validate([
+    ...validatePagination(),
+    query('q').optional().isString().trim(),
+    query('category').optional().isString().trim(),
+    query('minPrice').optional().isFloat({ min: 0 }),
+    query('maxPrice').optional().isFloat({ min: 0 }),
+    query('inStock').optional().isBoolean()
+  ]),
   cacheMiddleware(180), // Cache for 3 minutes
-  (req, res, next) => {
-    recordProductOperation(null, 'search');
-    next();
-  },
-  controller.search
+  asyncHandler(async (req, res, next) => {
+    recordOperation('product_search', 'success');
+    await controller.search(req, res, next);
+  })
 );
 
 export default router;

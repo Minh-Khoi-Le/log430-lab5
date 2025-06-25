@@ -1,7 +1,7 @@
 {
-  "name": "product-service",
+  "name": "store-service",
   "version": "1.0.0",
-  "description": "Product management microservice - handles product catalog operations, product CRUD operations, and product information queries",
+  "description": "Store management microservice - handles store information, locations, and operational status",
   "main": "server.js",
   "type": "module",
   "scripts": {

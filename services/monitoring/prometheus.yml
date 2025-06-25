@@ -43,35 +43,35 @@ scrape_configs:
       - targets: ['user-service:3002']
     scrape_interval: 15s
 
-  # Store Service (when implemented)
+  # Store Service
   - job_name: 'store-service'
     metrics_path: '/metrics'
     static_configs:
       - targets: ['store-service:3003']
     scrape_interval: 15s
 
-  # Stock Service (when implemented)
+  # Stock Service
   - job_name: 'stock-service'
     metrics_path: '/metrics'
     static_configs:
       - targets: ['stock-service:3004']
     scrape_interval: 15s
 
-  # Sales Service (when implemented)
+  # Sales Service
   - job_name: 'sales-service'
     metrics_path: '/metrics'
     static_configs:
       - targets: ['sales-service:3005']
     scrape_interval: 15s
 
-  # Refund Service (when implemented)
+  # Refund Service
   - job_name: 'refund-service'
     metrics_path: '/metrics'
     static_configs:
       - targets: ['refund-service:3006']
     scrape_interval: 15s
 
-  # Cart Service (when implemented)
+  # Cart Service
   - job_name: 'cart-service'
     metrics_path: '/metrics'
     static_configs:
