@@ -1,0 +1,161 @@
+# Docker Compose for Microservices Architecture
+#
+# This docker-compose file defines all the microservices for the LOG430 project.
+# It includes the original monolith for comparison and all new microservices.
+#
+# Services:
+# - PostgreSQL Database (shared)
+# - Redis Cache (shared)
+# - Product Service (port 3001)
+# - User Service (port 3002)
+# - Store Service (port 3003)
+# - Stock Service (port 3004)
+# - Sales Service (port 3005)
+# - Refund Service (port 3006)
+# - Cart Service (port 3007)  
+# - Original Monolith (port 3000) - for comparison
+# - Prometheus (monitoring)
+# - Grafana (monitoring dashboard)
+
+version: '3.8'
+
+services:
+  # Shared Database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: log430_store
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Shared Redis Cache
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Product Service
+  product-service:
+    build:
+      context: ./services/product-service
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-secret-key-change-in-production
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # User Service
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-secret-key-change-in-production
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Original Monolith (for comparison)
+  monolith:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+
+  # Grafana for monitoring dashboard
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3100:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  default:
+    name: log430-microservices

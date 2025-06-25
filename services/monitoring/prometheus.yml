@@ -1,0 +1,100 @@
+# Prometheus Configuration for Microservices Monitoring
+#
+# This configuration file defines how Prometheus scrapes metrics from
+# all microservices in the LOG430 project. It includes:
+# - Individual microservice metrics endpoints
+# - System-level metrics
+# - Alerting rules and thresholds
+# - Service discovery for dynamic scaling
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alerting rules (can be extended)
+rule_files:
+  # - "alert_rules.yml"
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Scrape configuration for all microservices
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Product Service
+  - job_name: 'product-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['product-service:3001']
+    scrape_interval: 15s
+
+  # User Service
+  - job_name: 'user-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['user-service:3002']
+    scrape_interval: 15s
+
+  # Store Service (when implemented)
+  - job_name: 'store-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['store-service:3003']
+    scrape_interval: 15s
+
+  # Stock Service (when implemented)
+  - job_name: 'stock-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['stock-service:3004']
+    scrape_interval: 15s
+
+  # Sales Service (when implemented)
+  - job_name: 'sales-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['sales-service:3005']
+    scrape_interval: 15s
+
+  # Refund Service (when implemented)
+  - job_name: 'refund-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['refund-service:3006']
+    scrape_interval: 15s
+
+  # Cart Service (when implemented)
+  - job_name: 'cart-service'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['cart-service:3007']
+    scrape_interval: 15s
+
+  # Original Monolith (for comparison)
+  - job_name: 'monolith'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['monolith:3000']
+    scrape_interval: 15s
+
+  # PostgreSQL metrics (if postgres_exporter is used)
+  - job_name: 'postgres'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+    scrape_interval: 30s
+
+  # Redis metrics (if redis_exporter is used)
+  - job_name: 'redis'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 30s

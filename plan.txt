@@ -1,0 +1,196 @@
+# LOG430 Lab 5 - Microservices Migration Plan
+
+## Overview
+Migrate existing multi-store system from monolithic to microservices architecture with API Gateway integration.
+
+## Phase 1: System Analysis and Service Identification
+
+### 1.1 Services to Extract from Monolith
+**Core Services:**
+- **Product Service**: Product management, catalog operations
+- **Store Service**: Store information, physical store operations
+- **Sales Service**: Transaction processing, sales history
+- **Stock Service**: Inventory levels, stock management (shared between physical/online)
+- **User Service**: User authentication and profiles
+- **Refund Service**: Return processing
+
+**New E-commerce Service:**
+- **Shopping Cart Service**: Cart operations for e-commerce (add/remove items, persistence, session management)
+
+### 1.2 Service Dependencies
+- Stock Service: Shared between physical store and e-commerce
+- Cart Service: Depends on Product Service and Stock Service
+- Sales Service: May interact with Cart Service for checkout completion
+
+## Phase 2: Microservices Implementation
+
+### 2.1 Directory Structure
+```
+services/
+├── product-service/
+├── store-service/
+├── sales-service/
+├── stock-service/
+├── user-service/
+├── refund-service/
+└── cart-service/              # New e-commerce service
+```
+
+### 2.2 Service Extraction Tasks
+For each service:
+- Create separate Express application
+- Extract relevant routes from existing monolith
+- Set up independent database schema (or shared where appropriate)
+- Create Docker container configuration
+- Implement health check endpoints
+- Define service-specific API contracts
+
+### 2.3 Shopping Cart Service Implementation
+**Features:**
+- Add/remove items from cart
+- Cart persistence (Redis-based for session management)
+- Cart validation against stock levels
+- Cart expiration policies
+- Integration with Product and Stock services
+
+## Phase 3: API Gateway Implementation
+
+### 3.1 Gateway Setup
+**Technology Choice:** Kong or KrakenD
+**Structure:**
+```
+api-gateway/
+├── Dockerfile
+├── kong.yml (or krakenD.json)
+├── plugins/
+└── docker-compose.gateway.yml
+```
+
+### 3.2 Required Gateway Features
+- **Dynamic routing** to all microservices
+- **API key management** for access control
+- **Centralized logging** for all requests
+- **CORS configuration** for web client support
+- **Request/response transformation** if needed
+
+### 3.3 Load Balancing Configuration
+Set up load balancing for:
+- **Cart Service**: 2+ instances for high availability
+- **Stock Service**: 2+ instances (shared critical service)
+- **Product Service**: 2+ instances for catalog queries
+
+## Phase 4: Security and Access Management
+
+### 4.1 Gateway Security
+- Configure CORS rules for frontend access
+- Implement API key authentication
+- Add request throttling/rate limiting
+- Configure security headers
+
+### 4.2 Inter-service Communication
+- Service-to-service authentication tokens
+- Internal API endpoint protection
+- Service discovery configuration
+
+## Phase 5: Observability Enhancement
+
+### 5.1 Monitoring Updates
+Extend existing Prometheus/Grafana setup with:
+**New Metrics:**
+- Gateway request latency and throughput
+- Service-to-service communication metrics
+- Cart operations performance
+- Individual service availability
+- Load balancing distribution metrics
+
+### 5.2 Dashboard Updates
+- Microservices overview dashboard
+- Service dependency visualization
+- Performance comparison views
+- Error rate tracking per service
+
+## Phase 6: Load Testing and Architecture Comparison
+
+### 6.1 Test Scenarios
+**Scenario A (Baseline - Current Monolith):**
+- Direct API calls to existing monolithic application
+- Measure current performance metrics
+
+**Scenario B (New Architecture):**
+- All calls routed through API Gateway
+- Microservices handling requests independently
+
+### 6.2 Load Balancing Testing
+- Test round-robin distribution across service instances
+- Verify failover behavior when instances go down
+- Measure latency with/without load balancing
+- Use k6 or JMeter for consistent load testing
+
+### 6.3 Comparison Metrics
+- **Latency**: Response time differences
+- **Throughput**: Requests per second comparison
+- **Error Rate**: System reliability comparison
+- **Resource Utilization**: CPU/Memory usage patterns
+- **Service Availability**: Individual service uptime
+
+## Phase 7: Documentation and Deployment
+
+### 7.1 Documentation Updates
+- Update README.md with new architecture overview
+- Create microservices deployment guide
+- Update API documentation (Swagger/OpenAPI)
+- Document load balancing configuration
+- Create architecture diagrams
+
+### 7.2 Deployment Configuration
+- Update docker-compose.yml for microservices
+- Modify Kubernetes configurations if used
+- Create deployment scripts for gateway + services
+- Configure service health checks
+
+## Implementation Timeline
+
+**Week 1:** Phase 1-2 (Service extraction and cart service development)
+**Week 2:** Phase 3 (API Gateway setup and routing configuration)  
+**Week 3:** Phase 4-5 (Security, monitoring, and observability)
+**Week 4:** Phase 6-7 (Load testing, comparison analysis, documentation)
+
+## Key Technical Decisions
+
+### Database Strategy
+- **Shared Database Approach**: Keep existing database, partition by service domain
+- **Service-Specific Schemas**: Each service owns its data tables
+- **Cart Service**: Use Redis for session-based cart storage
+
+### Communication Patterns
+- **Synchronous**: REST APIs for direct service calls
+- **Gateway-mediated**: All external calls through API Gateway
+- **Internal**: Direct service-to-service communication where needed
+
+### Deployment Strategy
+- **Containerized Services**: Each service in its own Docker container
+- **Gateway as Entry Point**: Single point of entry for all external requests
+- **Load Balanced Critical Services**: Multiple instances for cart, stock, and product services
+
+## Success Criteria
+
+1. **Functional**: All existing functionality preserved through microservices
+2. **Performance**: Comparable or better performance through gateway
+3. **Scalability**: Individual services can scale independently
+4. **Observability**: Clear visibility into service performance and dependencies
+5. **Load Balancing**: Verified distribution across multiple service instances
+6. **Documentation**: Complete technical documentation and comparison analysis
+
+## Risks and Mitigation
+
+**Risk**: Increased latency due to service calls
+**Mitigation**: Optimize service communication, implement caching
+
+**Risk**: Service dependency failures
+**Mitigation**: Implement circuit breakers, proper error handling
+
+**Risk**: Complex deployment process
+**Mitigation**: Automated deployment scripts, comprehensive testing
+
+**Risk**: Data consistency across services
+**Mitigation**: Careful transaction boundary design, eventual consistency patterns
