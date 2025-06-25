@@ -7,6 +7,7 @@
 - Lab2 : [https://github.com/Minh-Khoi-Le/log430-lab2.git](https://github.com/Minh-Khoi-Le/log430-lab2.git)
 - Lab3 : [https://github.com/Minh-Khoi-Le/log430-lab2/releases/tag/lab3](https://github.com/Minh-Khoi-Le/log430-lab2/releases/tag/lab3)
 - Lab4 : [https://github.com/Minh-Khoi-Le/log430-lab4.git](https://github.com/Minh-Khoi-Le/log430-lab4.git)
+- Lab5 : [https://github.com/Minh-Khoi-Le/log430-lab5.git](https://github.com/Minh-Khoi-Le/log430-lab5.git)
 
 ---
 

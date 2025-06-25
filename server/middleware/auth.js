@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { ApiError } from './errorHandler.js';
 
 // JWT secret key from environment variables or fallback to default (for development only)
-const SECRET = process.env.JWT_SECRET || 'lab4-secret';
+const SECRET = process.env.JWT_SECRET || 'lab5-secret';
 
 /**
  * Authentication Middleware Function

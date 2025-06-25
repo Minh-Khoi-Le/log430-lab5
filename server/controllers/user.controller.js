@@ -3,7 +3,7 @@ import SaleDAO from '../dao/sale.dao.js';
 import jwt from 'jsonwebtoken';
 
 // JWT secret key from environment variables or fallback to default (for development only)
-const SECRET = process.env.JWT_SECRET || 'lab4-secret';
+const SECRET = process.env.JWT_SECRET || 'lab5-secret';
 
 /**
  * Login Controller
