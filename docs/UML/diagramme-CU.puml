@@ -1,0 +1,59 @@
+@startuml Diagramme CU
+title Diagramme CU - Gestion d'un magasin
+
+actor Client
+actor Gestionnaire
+
+' === Cas d'usage Client ===
+usecase "Consulter produits" as UC1
+usecase "Ajouter au panier" as UC2
+usecase "Effectuer un achat" as UC3
+usecase "Voir historique achats" as UC4
+usecase "Demander un remboursement" as UC5
+usecase "S'authentifier" as UC6
+
+' === Cas d'usage Gestionnaire ===
+usecase "Gérer les produits" as UC7
+usecase "Créer produit" as UC8
+usecase "Modifier produit" as UC9
+usecase "Supprimer produit" as UC10
+usecase "Gérer les magasins" as UC11
+usecase "Consulter les stocks" as UC12
+usecase "Ajuster les stocks" as UC13
+usecase "Consulter dashboard" as UC14
+usecase "Générer rapports" as UC15
+usecase "Traiter remboursements" as UC16
+usecase "Voir métriques performance" as UC17
+
+' === Relations Client ===
+Client --> UC1
+Client --> UC2
+Client --> UC3
+Client --> UC4
+Client --> UC5
+Client --> UC6
+
+' === Relations Gestionnaire ===
+Gestionnaire --> UC1
+Gestionnaire --> UC6
+Gestionnaire --> UC7
+Gestionnaire --> UC8
+Gestionnaire --> UC9
+Gestionnaire --> UC10
+Gestionnaire --> UC11
+Gestionnaire --> UC12
+Gestionnaire --> UC13
+Gestionnaire --> UC14
+Gestionnaire --> UC15
+Gestionnaire --> UC16
+Gestionnaire --> UC17
+
+' === Inclusions ===
+UC7 .> UC8 : include
+UC7 .> UC9 : include
+UC7 .> UC10 : include
+UC3 .> UC6 : include
+UC5 .> UC6 : include
+UC14 .> UC15 : include
+
+@enduml

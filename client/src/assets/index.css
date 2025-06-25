@@ -1,0 +1,154 @@
+.products-wrapper {
+  margin: 40px 28px 0 28px;
+  background: #666;
+  border-radius: 4px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 450px;
+  box-sizing: border-box;
+  max-width: calc(100vw - 56px);
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* La grille de cartes */
+.products-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 300px;
+}
+
+/* Product card container */
+.product-card {
+  position: relative;
+  min-width: 220px;
+  max-width: 300px;
+  width: 240px;
+  margin: 20px 20px;
+  background: #e0e0e0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  cursor: pointer;
+  overflow: hidden;
+  transition: box-shadow 0.15s;
+}
+
+
+.product-card:hover .product-card-actions {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* Bottom info (nom + prix) */
+.product-card-info {
+  padding: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.07em;
+}
+
+.product-card-action-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0 2px;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.12s;
+  filter: drop-shadow(0 1px 2px #bbb);
+}
+.product-card-action-btn:focus {
+  outline: 2px solid #333;
+}
+.product-card-action-btn:hover {
+  transform: scale(1.17) rotate(-8deg);
+}
+
+.product-card-img-zone {
+  position: relative;
+  height: 80px;
+  width: 100%;
+}
+.product-card-img-bg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #fff;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  transition: filter 0.15s;
+}
+.product-card-actions {
+  position: relative; 
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  gap: 32px;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 50;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+  overflow-y: auto;
+}
+.modal-content {
+  background: #fff;
+  border-radius: 8px;
+  align-items: flex-start;
+  padding: 32px 28px 24px 28px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+  min-width: 320px;
+  max-width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+  width: auto;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 28px;
+  gap: 18px;
+}
+.btn {
+  padding: 7px 20px;
+  border-radius: 6px;
+  border: none;
+  background: #f1f1f1;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.1s;
+}
+.btn:hover {
+  background: #dedede;
+}
+.btn-danger {
+  background: #f44336;
+  color: #fff;
+}
+.btn-danger:hover {
+  background: #cc372b;
+}
+

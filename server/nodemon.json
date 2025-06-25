@@ -1,0 +1,21 @@
+{
+  "restartable": "rs",
+  "ignore": [
+    "tests/",
+    "node_modules/",
+    ".git"
+  ],
+  "verbose": false,
+  "watch": [
+    "*.js",
+    "routes/",
+    "controllers/",
+    "services/",
+    "middleware/",
+    "dao/"
+  ],
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "ext": "js"
+} 

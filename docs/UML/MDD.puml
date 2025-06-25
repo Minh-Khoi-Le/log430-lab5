@@ -1,0 +1,79 @@
+@startuml MDD Magasin
+title Modèle du domaine — LOG430 Magasin 
+
+'–––––––––––  Entités  –––––––––––
+class Product {
+    {key} id
+    name
+    price
+    description
+}
+
+class Store {
+    {key} id
+    name
+    address
+}
+
+class Stock {
+    {key} id
+    storeId
+    productId
+    quantity
+}
+
+class User {
+    {key} id
+    name
+    role
+    password
+}
+
+class Sale {
+    {key} id
+    storeId
+    userId
+    date
+    total
+    status
+}
+
+class SaleLine {
+    {key} id
+    saleId
+    productId
+    quantity
+    unitPrice
+}
+
+class Refund {
+    {key} id
+    saleId
+    storeId
+    userId
+    date
+    total
+    reason
+}
+
+class RefundLine {
+    {key} id
+    refundId
+    productId
+    quantity
+    unitPrice
+}
+
+'–––––––––––  Associations & cardinalités  –––––––––––
+Store     "1"     o--  "0..*" Stock        : possède
+Product   "1"     o--  "0..*" Stock        : stocké par
+Store     "1"     o--  "0..*" Sale         : réalise
+Store     "1"     o--  "0..*" Refund       : traite
+User      "1"     o--  "0..*" Sale         : effectue
+User      "1"     o--  "0..*" Refund       : demande
+Sale      "1"     o--  "1..*" SaleLine     : comporte
+Sale      "1"     o--  "0..*" Refund       : peut générer
+Product   "1"     o--  "0..*" SaleLine     : présent comme item
+Refund    "1"     o--  "1..*" RefundLine   : comporte
+Product   "1"     o--  "0..*" RefundLine   : remboursé comme item
+@enduml

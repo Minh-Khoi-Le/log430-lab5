@@ -1,0 +1,125 @@
+@startuml Architecture Système
+
+title Architecture Système - LOG430 Magasin
+
+package "Frontend (React)" {
+  package "Pages" {
+    component [Login]
+    component [Products]
+    component [Dashboard]
+    component [CartPage]
+    component [StoreDetail]
+    component [History]
+  }
+  
+  package "Components" {
+    component [ProductList]
+    component [ProductCard]
+    component [ProductEditForm]
+    component [Navbar]
+    component [Modal]
+  }
+  
+  package "Context" {
+    component [CartContext]
+    component [UserContext]
+  }
+  
+  package "API Client" {
+    component [Fetch Service]
+  }
+}
+
+package "Backend (Node.js/Express)" {
+  package "Routes" {
+    component [Product Routes]
+    component [Sale Routes]
+    component [Store Routes]
+    component [User Routes]
+    component [Refund Routes]
+    component [MaisonMere Routes]
+  }
+  
+  package "Controllers" {
+    component [ProductController]
+    component [SaleController]
+    component [StoreController]
+    component [UserController]
+    component [RefundController]
+    component [MaisonMereController]
+  }
+  
+  package "Services" {
+    component [ProductService]
+    component [RedisService]
+  }
+  
+  package "Middleware" {
+    component [AuthMiddleware]
+    component [CacheMiddleware]
+    component [MetricsMiddleware]
+    component [ErrorHandler]
+    component [ValidateRequest]
+  }
+  
+  package "ORM" {
+    component [Prisma Client]
+  }
+}
+
+package "Infrastructure" {
+  database "PostgreSQL" {
+    component [Store]
+    component [Product]
+    component [User]
+    component [Stock]
+    component [Sale]
+    component [SaleLine]
+    component [Refund]
+    component [RefundLine]
+  }
+  
+  database "Redis Cache" {
+    component [API Responses]
+    component [Session Data]
+  }
+  
+  package "Monitoring" {
+    component [Prometheus]
+    component [Grafana]
+  }
+  
+  package "Container Orchestration" {
+    component [Kubernetes]
+    component [Docker]
+  }
+}
+
+package "Development & Testing" {
+  package "Load Testing" {
+    component [K6 Scripts]
+  }
+  
+  package "CI/CD" {
+    component [Build Scripts]
+    component [Deployment Scripts]
+  }
+}
+
+' Connections
+[Fetch Service] --> [Product Routes] : HTTP/REST
+[Product Routes] --> [ProductController]
+[ProductController] --> [ProductService]
+[ProductService] --> [Prisma Client]
+[Prisma Client] --> PostgreSQL
+
+[CacheMiddleware] --> [Redis Cache]
+[MetricsMiddleware] --> [Prometheus]
+[Prometheus] --> [Grafana]
+
+[K6 Scripts] --> [Backend (Node.js/Express)] : Load Testing
+
+[CartContext] --> [Fetch Service]
+[UserContext] --> [Fetch Service]
+
+@enduml

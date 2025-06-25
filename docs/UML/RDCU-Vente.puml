@@ -1,0 +1,54 @@
+@startuml RDCU Vente
+
+title RDCU - Vente produit 
+
+actor Client
+participant "Cart Context" as CartCtx
+participant "UI React" as Frontend
+participant "Auth Middleware" as Auth
+participant "Cache Middleware" as Cache
+participant "Express API" as Backend
+participant "Sale Controller" as Controller
+participant "Product Service" as ProductSvc
+participant "Redis Cache" as Redis
+participant "Prisma Client" as Prisma
+participant "PostgreSQL DB" as DB
+
+Client -> CartCtx : addToCart(product)
+CartCtx -> Frontend : updateCartState()
+Client -> Frontend : checkout()
+Frontend -> Backend : POST /api/v1/sales {userId, storeId, items}
+Backend -> Auth : validateAuth(token)
+Auth -> Backend : user authenticated
+Backend -> Cache : checkCache(key)
+Cache -> Redis : getCache(key)
+Redis --> Cache : cache miss
+Cache -> Backend : proceed to controller
+Backend -> Controller : create(req, res, next)
+Controller -> ProductSvc : validateStock(items)
+ProductSvc -> Prisma : findMany(productIds)
+Prisma -> DB : SELECT products, stock
+DB --> Prisma : products with stock
+Prisma --> ProductSvc : product data
+ProductSvc --> Controller : stock validation result
+
+alt Stock suffisant
+  Controller -> Prisma : sale.create (transaction)
+  Prisma -> DB : BEGIN TRANSACTION
+  Prisma -> DB : INSERT INTO Sale
+  Prisma -> DB : INSERT INTO SaleLine (batch)
+  Prisma -> DB : UPDATE Stock (decrease quantities)
+  DB --> Prisma : COMMIT SUCCESS
+  Prisma --> Controller : {saleId, total, date}
+  Controller -> Redis : invalidateCache(pattern)
+  Controller --> Backend : 201 Created
+  Backend --> Frontend : {success: true, sale: {...}}
+  Frontend -> CartCtx : clearCart()
+else Stock insuffisant
+  ProductSvc --> Controller : {error: "insufficient_stock"}
+  Controller --> Backend : 400 Bad Request
+  Backend --> Frontend : {error: "Stock insuffisant"}
+  Frontend -> Client : Affichage erreur
+end
+
+@enduml

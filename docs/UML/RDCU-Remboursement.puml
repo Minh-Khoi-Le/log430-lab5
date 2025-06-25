@@ -1,0 +1,47 @@
+@startuml RDCU Remboursement
+
+title RDCU - Remboursement produit
+
+actor Client
+participant "Frontend" as UI
+participant "Auth Middleware" as Auth
+participant "Refund Controller" as RefundCtrl
+participant "Sale Service" as SaleService
+participant "Prisma Client" as Prisma
+participant "Cache Service" as Cache
+participant "Database" as DB
+
+Client -> UI : handleRefundRequest(purchase)
+UI -> RefundCtrl : POST /api/v1/refunds
+RefundCtrl -> Auth : validateUser(token)
+Auth --> RefundCtrl : user validated
+
+RefundCtrl -> SaleService : validateSaleForRefund(saleId, userId)
+SaleService -> Prisma : findSaleWithDetails(saleId)
+Prisma -> DB : SELECT sale, saleLines WHERE id = saleId
+DB --> Prisma : sale details
+Prisma --> SaleService : sale data
+
+alt Sale exists and belongs to user
+  SaleService --> RefundCtrl : sale valid for refund
+  RefundCtrl -> Prisma : createRefund(transaction)
+  Prisma -> DB : BEGIN TRANSACTION
+  Prisma -> DB : INSERT INTO Refund
+  Prisma -> DB : INSERT INTO RefundLine (items)
+  Prisma -> DB : UPDATE Sale SET status = 'refunded'
+  Prisma -> DB : UPDATE Stock (increase quantities)
+  DB --> Prisma : COMMIT SUCCESS
+  Prisma --> RefundCtrl : refund created
+  
+  RefundCtrl -> Cache : invalidateRelatedCache()
+  Cache -> Cache : clear sale cache, product cache
+  
+  RefundCtrl --> UI : 201 Created {refundId, total}
+  UI --> Client : "Remboursement traité avec succès"
+else Sale invalid or not owned by user
+  SaleService --> RefundCtrl : error: invalid sale
+  RefundCtrl --> UI : 400 Bad Request
+  UI --> Client : "Erreur: Vente non trouvée ou non autorisée"
+end
+
+@enduml
