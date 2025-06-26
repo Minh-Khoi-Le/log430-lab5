@@ -28,173 +28,197 @@
  */
 
 import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import morgan from 'morgan';
 import { PrismaClient } from '@prisma/client';
-import os from 'os';
 
-// Import middleware
-import { errorHandler } from './middleware/errorHandler.js';
-import { metricsMiddleware, metricsEndpoint } from './middleware/metrics.js';
+// Import shared components
+import {
+  initializeSharedServices,
+  cleanupSharedServices,
+  config,
+  logger,
+  errorHandler,
+  notFoundHandler,
+  httpMetricsMiddleware,
+  metricsHandler
+} from '@log430/shared';
 
 // Import routes
 import storeRoutes from './routes/store.routes.js';
 
 // Initialize Express app and database connection
 const app = express();
-const prisma = new PrismaClient();
-const PORT = process.env.PORT || 3003; // Default port 3003 for store service
-const SERVICE_NAME = 'store-service';
-
-// Log service startup information
-console.log(`Starting ${SERVICE_NAME} on pod: ${os.hostname()}`);
-console.log(`Service will listen on port: ${PORT}`);
-
-// Security middleware - protects against common vulnerabilities
-app.use(helmet());
-
-// CORS configuration - allows cross-origin requests from API Gateway and clients
-app.use(cors({
-  exposedHeaders: ['Authorization', 'X-Service-Name']
-}));
-
-// Request parsing and logging middleware
-app.use(express.json());
-app.use(morgan('combined')); // HTTP request logging
-
-// Metrics collection middleware for monitoring
-app.use(metricsMiddleware);
-metricsEndpoint(app);
-
-// Add service identifier header to all responses for debugging/monitoring
-app.use((req, res, next) => {
-  res.setHeader('X-Service-Name', SERVICE_NAME);
-  res.setHeader('X-Pod-Name', os.hostname());
-  next();
+const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
 });
 
-// Root endpoint - service information
-app.get('/', (req, res) => {
-  res.json({
-    service: SERVICE_NAME,
-    version: '1.0.0',
-    description: 'Store management microservice',
-    pod: os.hostname(),
-    status: 'running',
-    endpoints: {
-      stores: '/stores',
-      health: '/health',
-      metrics: '/metrics'
-    }
-  });
-});
-
-// Store management routes - all store-related endpoints
-app.use('/stores', storeRoutes);
-
-// Health check endpoint - used by load balancers and service discovery
-app.get('/health', async (req, res) => {
+async function initializeApp() {
   try {
-    // Test database connectivity
-    await prisma.$queryRaw`SELECT 1`;
+    // Initialize shared services first
+    await initializeSharedServices();
     
-    res.status(200).json({
-      status: 'healthy',
-      service: SERVICE_NAME,
-      timestamp: new Date().toISOString(),
-      pod: os.hostname(),
-      database: 'connected',
-      environment: process.env.NODE_ENV || 'development',
-      uptime: process.uptime()
+    const PORT = config.get('PORT') || 3003;
+    
+    logger.info('Initializing Store Service...');
+
+    // Apply shared middleware
+    app.use(httpMetricsMiddleware);
+    app.use(express.json({ limit: '10mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+    /**
+     * Health Check Endpoint
+     * Provides comprehensive health status including database connectivity
+     */
+    app.get('/health', async (req, res) => {
+      try {
+        const health = {
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          service: 'store-service',
+          version: process.env.npm_package_version || '1.0.0',
+          uptime: process.uptime(),
+          memory: process.memoryUsage(),
+          dependencies: {
+            database: 'checking...',
+            cache: 'checking...'
+          }
+        };
+
+        // Check database connection
+        try {
+          await prisma.$queryRaw`SELECT 1`;
+          health.dependencies.database = 'healthy';
+        } catch (error) {
+          health.dependencies.database = 'unhealthy';
+          health.status = 'degraded';
+          logger.warn('Database health check failed:', error);
+        }
+
+        // Check cache connection (if available)
+        try {
+          const { redisService } = await import('@log430/shared');
+          await redisService.ping();
+          health.dependencies.cache = 'healthy';
+        } catch (error) {
+          health.dependencies.cache = 'unhealthy';
+          logger.warn('Cache health check failed:', error);
+        }
+
+        const statusCode = health.status === 'healthy' ? 200 : 503;
+        res.status(statusCode).json(health);
+      } catch (error) {
+        logger.error('Health check failed:', error);
+        res.status(503).json({
+          status: 'unhealthy',
+          timestamp: new Date().toISOString(),
+          service: 'store-service',
+          error: error.message
+        });
+      }
     });
-  } catch (error) {
-    console.error('Health check failed:', error);
-    res.status(503).json({
-      status: 'unhealthy',
-      service: SERVICE_NAME,
-      timestamp: new Date().toISOString(),
-      pod: os.hostname(),
-      database: 'disconnected',
-      environment: process.env.NODE_ENV || 'development',
-      error: error.message
+
+    /**
+     * Metrics Endpoint
+     * Uses shared metrics handler
+     */
+    app.get('/metrics', metricsHandler);
+
+    /**
+     * API Routes
+     * Mount store-specific routes under /api/v1/stores
+     */
+    app.use('/api/v1/stores', storeRoutes);
+
+    /**
+     * Service Information Endpoint
+     * Provides metadata about the store service
+     */
+    app.get('/', (req, res) => {
+      res.json({
+        service: 'store-service',
+        version: '1.0.0',
+        description: 'Store Information Management Microservice',
+        endpoints: {
+          health: '/health',
+          metrics: '/metrics',
+          api: '/api/v1/stores'
+        },
+        features: [
+          'Store CRUD operations',
+          'Location management',
+          'Operational status tracking',
+          'Performance analytics',
+          'Multi-store coordination'
+        ]
+      });
     });
-  }
-});
 
-// Detailed health check endpoint with service-specific checks
-app.get('/health/detailed', async (req, res) => {
-  const healthChecks = {
-    service: SERVICE_NAME,
-    timestamp: new Date().toISOString(),
-    pod: os.hostname(),
-    checks: {}
-  };
+    // Apply shared error handlers
+    app.use(notFoundHandler);
+    app.use(errorHandler);
 
-  try {
-    // Database connectivity check
-    await prisma.$queryRaw`SELECT 1`;
-    healthChecks.checks.database = { status: 'healthy', message: 'Database connection successful' };
-  } catch (error) {
-    healthChecks.checks.database = { status: 'unhealthy', message: error.message };
-  }
-
-  try {
-    // Check if we can query stores (service-specific functionality)
-    const storeCount = await prisma.store.count();
-    healthChecks.checks.storeService = { 
-      status: 'healthy', 
-      message: `Store service operational, ${storeCount} stores configured` 
+    /**
+     * Graceful Shutdown Handler
+     * Properly closes connections and cleans up resources
+     */
+    const gracefulShutdown = async (signal) => {
+      logger.info(`Received ${signal}. Starting graceful shutdown...`);
+      
+      try {
+        // Close database connection
+        await prisma.$disconnect();
+        logger.info('Database connection closed');
+        
+        // Cleanup shared services
+        await cleanupSharedServices();
+        
+        // Close HTTP server
+        server.close(() => {
+          logger.info('HTTP server closed');
+          process.exit(0);
+        });
+        
+        // Force shutdown after timeout
+        setTimeout(() => {
+          logger.error('Forced shutdown due to timeout');
+          process.exit(1);
+        }, 10000);
+        
+      } catch (error) {
+        logger.error('Error during graceful shutdown:', error);
+        process.exit(1);
+      }
     };
+
+    // Register shutdown handlers
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+    /**
+     * Start Server
+     * Initialize the store service and begin accepting requests
+     */
+    const server = app.listen(PORT, () => {
+      logger.info(`🏪 Store Service started successfully`);
+      logger.info(`📡 Server running on port ${PORT}`);
+      logger.info(`🔍 Health check available at http://localhost:${PORT}/health`);
+      logger.info(`📊 Metrics available at http://localhost:${PORT}/metrics`);
+      logger.info(`🚀 API endpoints available at http://localhost:${PORT}/api/v1/stores`);
+    });
+
+    return server;
+
   } catch (error) {
-    healthChecks.checks.storeService = { status: 'unhealthy', message: error.message };
+    logger.error('Failed to initialize Store Service:', error);
+    process.exit(1);
   }
+}
 
-  // Memory usage check
-  const memUsage = process.memoryUsage();
-  healthChecks.checks.memory = {
-    status: memUsage.heapUsed < 500 * 1024 * 1024 ? 'healthy' : 'warning', // 500MB threshold
-    heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
-    heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`
-  };
-
-  // Overall health status
-  const allHealthy = Object.values(healthChecks.checks).every(check => check.status === 'healthy');
-  const hasWarnings = Object.values(healthChecks.checks).some(check => check.status === 'warning');
-  
-  if (allHealthy) {
-    healthChecks.status = 'healthy';
-  } else if (hasWarnings) {
-    healthChecks.status = 'warning';
-  } else {
-    healthChecks.status = 'unhealthy';
-  }
-
-  res.status(allHealthy || hasWarnings ? 200 : 503).json(healthChecks);
+// Initialize and start the application
+initializeApp().catch(error => {
+  logger.error('Failed to start Store Service:', error);
+  process.exit(1);
 });
 
-// Error handling middleware - must be last
-app.use(errorHandler);
-
-// Graceful shutdown handling
-process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  await prisma.$disconnect();
-  process.exit(0);
-});
-
-process.on('SIGINT', async () => {
-  console.log('SIGINT received, shutting down gracefully');
-  await prisma.$disconnect();
-  process.exit(0);
-});
-
-// Start the server
-const server = app.listen(PORT, () => {
-  console.log(`${SERVICE_NAME} running on port ${PORT} (pod: ${os.hostname()})`);
-  console.log(`Health check available at http://localhost:${PORT}/health`);
-  console.log(`Metrics available at http://localhost:${PORT}/metrics`);
-});
-
-// Export for testing purposes
-export { app, server, prisma };
+// Export app for testing
+export default app;

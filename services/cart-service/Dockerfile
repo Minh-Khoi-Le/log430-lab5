@@ -1,49 +1,44 @@
-# Cart Service Dockerfile
-# Multi-stage build for production-ready Node.js microservice
+FROM node:18-alpine
 
-# Build stage
-FROM node:18-alpine AS builder
-
-# Set working directory
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies (including dev dependencies for build)
-RUN npm ci --only=production && npm cache clean --force
-
-# Production stage
-FROM node:18-alpine AS production
-
-# Create app user for security
+# Create a non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package.json files first to leverage Docker caching
+COPY ./services/shared/package.json ./services/shared/
+COPY ./services/cart-service/package.json ./services/cart-service/
+COPY ./fix-shared-modules.js .
 
-# Copy node_modules from builder stage
-COPY --from=builder /app/node_modules ./node_modules
+# Run the fix script to create proper export wrappers for shared modules
+RUN node fix-shared-modules.js
 
-# Copy application code
-COPY --chown=nodejs:nodejs . .
+# Install dependencies for shared module first
+WORKDIR /app/services/shared
+RUN npm install
 
-# Remove unnecessary files for production
-RUN rm -rf ./tests/ ./docs/ ./*.md
+# Install dependencies for the service
+WORKDIR /app/services/cart-service
+RUN npm install
 
-# Switch to non-root user
+# Copy the rest of the application code
+COPY ./services/shared /app/services/shared
+COPY ./services/cart-service /app/services/cart-service
+COPY ./prisma /app/prisma
+
+# Generate Prisma client
+WORKDIR /app
+RUN npm install -g prisma@5.14.0 && npx prisma generate
+
+# Set the working directory to the service's folder
+WORKDIR /app/services/cart-service
+
+# Switch to the non-root user
 USER nodejs
 
-# Expose port
-EXPOSE 3006
+# Expose the port for the service
+EXPOSE 3007
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "http.get('http://localhost:3006/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })" || exit 1
-
-# Start the application
-CMD ["node", "server.js"]
+# Start the service
+CMD ["node", "server.js"] 

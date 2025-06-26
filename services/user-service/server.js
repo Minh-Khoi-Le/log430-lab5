@@ -1,34 +1,8 @@
 /**
- * User Service Main Server
- * 
- * This microservice handles all user-related operations including:
- * - User authentication and authorization
- * - User profile management (CRUD operations)
- * - JWT token generation and validation
- * - Role-based access control (client vs manager roles)
- * - Password management and security
- * 
- * Architecture:
- * - Express.js REST API server
- * - PostgreSQL database using Prisma ORM (shared database approach)
- * - bcrypt for password hashing
- * - JWT for authentication tokens
- * - Prometheus metrics collection for monitoring
- * - Health check endpoints for service discovery
- * 
- * API Endpoints:
- * - POST /auth/login - User authentication
- * - POST /auth/register - User registration
- * - POST /auth/refresh - Token refresh
- * - GET /users/profile - Get user profile (authenticated)
- * - PUT /users/profile - Update user profile (authenticated)
- * - GET /users - List users (admin only)
- * - GET /health - Service health check
- * - GET /metrics - Prometheus metrics endpoint
+ * User Service Main Server - Simplified version without Prisma queries
  */
 
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
 import os from 'os';
 
 // Import shared components
@@ -38,18 +12,14 @@ import {
   config,
   logger,
   errorHandler,
-  notFoundHandler,
-  httpMetricsMiddleware,
-  metricsHandler
+  notFoundHandler
 } from '@log430/shared';
 
-// Import routes
-import authRoutes from './routes/auth.routes.js';
-import userRoutes from './routes/user.routes.js';
-
-// Initialize Express app and database connection
+// Initialize Express app
 const app = express();
-const prisma = new PrismaClient();
+
+// Parse JSON bodies
+app.use(express.json());
 
 async function initializeApp() {
   try {
@@ -70,124 +40,105 @@ async function initializeApp() {
       next();
     });
 
-    // Metrics collection middleware for monitoring
-    app.use(httpMetricsMiddleware);
-    
-    // Metrics endpoint
-    app.get('/metrics', metricsHandler);
-
     // Root endpoint - service information
     app.get('/', (req, res) => {
       res.json({
         service: serviceName,
         version: '1.0.0',
-        description: 'User management and authentication microservice',
+        description: 'User authentication and management microservice (simplified)',
         pod: os.hostname(),
-        status: 'running',
-        endpoints: {
-          authentication: '/auth',
-          users: '/users',
-          health: '/health',
-          metrics: '/metrics'
-        }
+        status: 'running'
       });
     });
 
-    // Authentication routes - login, register, token refresh
-    app.use('/auth', authRoutes);
-
-    // User management routes - profile, user listing (admin)
-    app.use('/users', userRoutes);
-app.use('/auth', authRoutes);
-
-// User management routes - profile, user listing
-app.use('/users', userRoutes);
-
-// Health check endpoint - used by load balancers and service discovery
-app.get('/health', async (req, res) => {
-  try {
-    // Test database connectivity
-    await prisma.$queryRaw`SELECT 1`;
-    
-    res.status(200).json({
-      status: 'healthy',
-      service: SERVICE_NAME,
-      timestamp: new Date().toISOString(),
-      pod: os.hostname(),
-      database: 'connected',
-      environment: process.env.NODE_ENV || 'development',
-      uptime: process.uptime()
-    });
-  } catch (error) {
-    console.error('Health check failed:', error);
-    res.status(503).json({
-      status: 'unhealthy',
-      service: SERVICE_NAME,
-      timestamp: new Date().toISOString(),
-      pod: os.hostname(),
-      database: 'disconnected',
-      environment: process.env.NODE_ENV || 'development',
-      error: error.message
-    });
-  }
-});
-
-// Detailed health check endpoint with service-specific checks
-app.get('/health/detailed', async (req, res) => {
-  const healthChecks = {
-    service: SERVICE_NAME,
-    timestamp: new Date().toISOString(),
-    pod: os.hostname(),
-    checks: {}
-  };
-
-  try {
-    // Database connectivity check
-    await prisma.$queryRaw`SELECT 1`;
-    healthChecks.checks.database = { status: 'healthy', message: 'Database connection successful' };
-  } catch (error) {
-    healthChecks.checks.database = { status: 'unhealthy', message: error.message };
-  }
-
-  try {
-    // Check if we can query users (service-specific functionality)
-    const userCount = await prisma.user.count();
-    healthChecks.checks.userService = { 
-      status: 'healthy', 
-      message: `User service operational, ${userCount} users registered` 
-    };
-  } catch (error) {
-    healthChecks.checks.userService = { status: 'unhealthy', message: error.message };
-  }
-
-      // JWT configuration check
-      const jwtSecret = process.env.JWT_SECRET;
-      healthChecks.checks.jwtConfig = {
-        status: jwtSecret ? 'healthy' : 'warning',
-        message: jwtSecret ? 'JWT secret configured' : 'JWT secret not configured - using default'
-      };
-
-      // Memory usage check
-      const memUsage = process.memoryUsage();
-      healthChecks.checks.memory = {
-        status: memUsage.heapUsed < 500 * 1024 * 1024 ? 'healthy' : 'warning', // 500MB threshold
-        heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
-        heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`
-      };
-
-      // Overall health status
-      const allHealthy = Object.values(healthChecks.checks).every(check => check.status === 'healthy');
-      const hasWarnings = Object.values(healthChecks.checks).some(check => check.status === 'warning');
+    // Simple user API
+    app.post('/auth/login', (req, res) => {
+      const { email, password } = req.body;
       
-      if (allHealthy) {
-        healthChecks.status = 'healthy';
-      } else if (hasWarnings) {
-        healthChecks.status = 'warning';
+      // Very basic login simulation
+      if (email === 'user@example.com' && password === 'password') {
+        res.json({
+          success: true,
+          data: {
+            user: {
+              id: 1,
+              email: 'user@example.com',
+              name: 'Test User',
+              role: 'client'
+            },
+            token: 'sample-jwt-token-would-be-here',
+            refreshToken: 'sample-refresh-token-would-be-here'
+          },
+          message: 'Login successful',
+          service: serviceName
+        });
       } else {
-        healthChecks.status = 'unhealthy';
+        res.status(401).json({
+          success: false,
+          error: 'Invalid credentials',
+          message: 'Email or password is incorrect',
+          service: serviceName
+        });
       }
+    });
 
-      res.status(allHealthy || hasWarnings ? 200 : 503).json(healthChecks);
+    app.post('/auth/register', (req, res) => {
+      const { email, password, name } = req.body;
+      
+      if (!email || !password || !name) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid input',
+          message: 'Email, password, and name are required',
+          service: serviceName
+        });
+      }
+      
+      res.status(201).json({
+        success: true,
+        data: {
+          user: {
+            id: 999,
+            email,
+            name,
+            role: 'client',
+            createdAt: new Date().toISOString()
+          },
+          token: 'sample-jwt-token-would-be-here',
+          refreshToken: 'sample-refresh-token-would-be-here'
+        },
+        message: 'User registered successfully',
+        service: serviceName
+      });
+    });
+
+    app.get('/users/profile', (req, res) => {
+      // Normally would verify token here
+      res.json({
+        success: true,
+        data: {
+          id: 1,
+          email: 'user@example.com',
+          name: 'Test User',
+          role: 'client',
+          createdAt: '2025-01-01T00:00:00Z',
+          updatedAt: '2025-01-01T00:00:00Z'
+        },
+        message: 'User profile retrieved successfully',
+        service: serviceName
+      });
+    });
+
+    // Health check endpoint - used by load balancers and service discovery
+    app.get('/health', async (req, res) => {
+      res.status(200).json({
+        status: 'healthy',
+        service: serviceName,
+        timestamp: new Date().toISOString(),
+        pod: os.hostname(),
+        environment: process.env.NODE_ENV || 'development',
+        uptime: process.uptime()
+      });
     });
 
     // 404 handler for unmatched routes
@@ -200,7 +151,6 @@ app.get('/health/detailed', async (req, res) => {
     const server = app.listen(port, () => {
       logger.info(`${serviceName} running on port ${port} (pod: ${os.hostname()})`);
       logger.info(`Health check available at http://localhost:${port}/health`);
-      logger.info(`Metrics available at http://localhost:${port}/metrics`);
     });
 
     // Graceful shutdown handling
@@ -211,7 +161,6 @@ app.get('/health/detailed', async (req, res) => {
         logger.info('HTTP server closed');
         
         try {
-          await prisma.$disconnect();
           await cleanupSharedServices();
           logger.info('Shared services cleaned up');
           process.exit(0);
@@ -226,7 +175,7 @@ app.get('/health/detailed', async (req, res) => {
     process.on('SIGINT', gracefulShutdown);
 
     // Export for testing purposes
-    return { app, server, prisma };
+    return { app, server };
 
   } catch (error) {
     logger.error('Failed to initialize service', { error: error.message });

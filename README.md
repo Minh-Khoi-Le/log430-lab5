@@ -1,18 +1,36 @@
-# LOG430 - Store Management Application
+# LOG430 - Multi-Store Microservices Architecture
 
 ## Table of Contents
 
-- [LOG430 - Store Management Application](#log430---store-management-application)
+- [LOG430 - Multi-Store Microservices Architecture](#log430---multi-store-microservices-architecture)
   - [Table of Contents](#table-of-contents)
   - [Description](#description)
+  - [Architecture Overview](#architecture-overview)
   - [Technical Choices](#technical-choices)
   - [Quick Start](#quick-start)
+    - [Choose Your Deployment Method](#choose-your-deployment-method)
+    - [Docker Compose (Recommended for Development)](#docker-compose-recommended-for-development)
+    - [Kubernetes (Production-like)](#kubernetes-production-like)
+    - [Quick Commands](#quick-commands)
+      - [Docker Deployment](#docker-deployment)
+      - [Kubernetes Deployment](#kubernetes-deployment)
+    - [Access Points (Both Deployments)](#access-points-both-deployments)
+    - [All Scripts Organized](#all-scripts-organized)
+    - [**What Gets Started**](#what-gets-started)
     - [Prerequisites](#prerequisites)
-    - [Docker Compose (Simplest)](#docker-compose-simplest)
-    - [Kubernetes with Load Balancing](#kubernetes-with-load-balancing)
-    - [Kubernetes without Load Balancing](#kubernetes-without-load-balancing)
-    - [Testing and Monitoring](#testing-and-monitoring)
-  - [Local Development](#local-development)
+    - [Option 1: Microservices with API Gateway (Recommended)](#option-1-microservices-with-api-gateway-recommended)
+    - [Option 2: With Internal Security (Advanced)](#option-2-with-internal-security-advanced)
+    - [Option 3: Load Balanced Services](#option-3-load-balanced-services)
+  - [Microservices Deployment](#microservices-deployment)
+    - [Individual Service Ports](#individual-service-ports)
+    - [Service Health Checks](#service-health-checks)
+    - [Database and Cache](#database-and-cache)
+  - [API Gateway](#api-gateway)
+    - [Gateway Endpoints](#gateway-endpoints)
+    - [Security Features](#security-features)
+  - [Testing](#testing)
+    - [API Testing](#api-testing)
+    - [Load Testing](#load-testing)
   - [Load Balancing](#load-balancing)
     - [Architecture](#architecture)
     - [Implementation Details](#implementation-details)
@@ -22,31 +40,69 @@
     - [Cached Endpoints](#cached-endpoints)
   - [Monitoring](#monitoring)
     - [Accessing Monitoring Tools](#accessing-monitoring-tools)
-      - [With Docker Compose:](#with-docker-compose)
-      - [With Kubernetes:](#with-kubernetes)
+      - [With Docker Compose](#with-docker-compose)
+      - [With Kubernetes](#with-kubernetes)
     - [Key Metrics](#key-metrics)
     - [Monitoring During Load Tests](#monitoring-during-load-tests)
   - [Data Management](#data-management)
     - [Default Data Injection](#default-data-injection)
     - [Database Commands](#database-commands)
-  - [Testing](#testing)
   - [Project Structure](#project-structure)
   - [Additional Documentation](#additional-documentation)
 
 ## Description
 
-This application simulates store management with a modern web interface:
+This application demonstrates a complete migration from monolithic to microservices architecture for a multi-store management system. The project includes:
 
-- A React frontend (Vite)
-- A Node.js backend (Express, DAO, Prisma/PostgreSQL) with documented REST API
-  Both services are orchestrated with **Docker Compose**.
-  A **CI/CD** GitHub Actions pipeline automates the build and tests.
+- **7 Core Microservices**: Product, User, Store, Stock, Sales, Refund, and Cart services
+- **API Gateway**: Kong-based gateway with advanced routing, security, and load balancing
+- **React Frontend**: Modern web interface with Vite build system
+- **Complete Security**: Authentication, authorization, and inter-service communication security
+- **Monitoring & Observability**: Prometheus and Grafana integration
+- **Service Discovery**: Consul for dynamic service registration
+- **Secret Management**: Vault for secure credential storage
+
+## Architecture Overview
+
+```
+Frontend (React) → API Gateway (Kong) → Microservices
+                        ↓
+                 Load Balancing & Security
+                        ↓
+    ┌─────────────────────────────────────────────────┐
+    │              Microservices                      │
+    ├─────────────────────────────────────────────────┤
+    │ • Product Service (3001) - Catalog management  │
+    │ • User Service (3002) - Authentication        │
+    │ • Store Service (3003) - Store operations     │
+    │ • Stock Service (3004) - Inventory management │
+    │ • Sales Service (3005) - Transaction handling │
+    │ • Refund Service (3006) - Return processing   │
+    │ • Cart Service (3007) - Shopping cart         │
+    └─────────────────────────────────────────────────┘
+                        ↓
+            Internal Security & Service Mesh
+    ┌─────────────────────────────────────────────────┐
+    │ • Consul (Service Discovery)                    │
+    │ • Vault (Secret Management)                     │
+    │ • Internal Kong (Inter-service communication)  │
+    │ • PostgreSQL (Shared Database)                 │
+    │ • Redis (Caching & Sessions)                   │
+    └─────────────────────────────────────────────────┘
+```
 
 ## Technical Choices
 
-Frontend: React / Vite / Material UI
-
-Backend: Express (Node.js 20)
+**Frontend**: React with Vite, Material UI
+**Backend**: Node.js microservices with Express
+**API Gateway**: Kong with advanced routing and security
+**Database**: PostgreSQL with Prisma ORM
+**Caching**: Redis for sessions and performance
+**Monitoring**: Prometheus + Grafana
+**Security**: JWT, API Keys, OAuth, service mesh security
+**Service Discovery**: Consul
+**Secret Management**: HashiCorp Vault
+**Containerization**: Docker with Docker Compose
 
 Persistence: Prisma ORM / PostgreSQL
 
@@ -58,110 +114,234 @@ Orchestration: Kubernetes with Minikube
 
 ## Quick Start
 
+### Choose Your Deployment Method
+
+```bash
+# Interactive deployment selector
+scripts\quick-start.bat
+```
+
+This will present you with two deployment options:
+
+### Docker Compose (Recommended for Development)
+
+- **Fast setup** - Get running in minutes
+- **Local development** - Easy to modify and test
+- **Resource friendly** - Lower resource usage
+
+### Kubernetes (Production-like)
+
+- **Production environment** - Similar to real deployment
+- **Advanced features** - Auto-scaling, health checks, rolling updates
+- **Minikube required** - Local Kubernetes cluster
+
+### Quick Commands
+
+#### Docker Deployment
+
+```bash
+# Interactive Docker menu
+scripts\docker\quick-start-docker.bat
+
+# Or direct commands
+scripts\docker\start-gateway.bat      # Start backend services
+scripts\docker\start-frontend.bat     # Start frontend
+```
+
+#### Kubernetes Deployment
+
+```bash
+# Interactive Kubernetes menu
+scripts\kubernetes\quick-start-k8s.bat
+
+# Or step-by-step
+scripts\kubernetes\setup-minikube.bat    # Setup environment
+scripts\kubernetes\deploy-k8s.bat        # Deploy services
+scripts\kubernetes\port-forward-all.bat  # Access services
+```
+
+### Access Points (Both Deployments)
+
+When running, access the system at:
+
+- **Frontend**: <http://localhost:3000>
+- **API Gateway**: <http://localhost:8000>
+- **Grafana**: <http://localhost:3001>
+- **Prometheus**: <http://localhost:9090>
+
+### All Scripts Organized
+
+Scripts are now organized by deployment type:
+
+| Deployment | Location | Description |
+|------------|----------|-------------|
+| **Docker** | `scripts\docker\` | Docker Compose scripts and quick start |
+| **Kubernetes** | `scripts\kubernetes\` | Kubernetes deployment and management |
+| **Main Menu** | `scripts\quick-start.bat` | Deployment type selector |
+
+**Detailed Guide**: See `scripts\README.md` for complete documentation
+
+### **What Gets Started**
+
+- **Load Balanced Services**: Product, Stock, Cart (2 instances each)
+- **Single Instance Services**: User, Store, Sales, Refund
+- **Infrastructure**: PostgreSQL, Redis, Kong Gateway
+- **Monitoring**: Prometheus (9090), Grafana (3100)
+- **Frontend**: React app (5173)
+
 ### Prerequisites
 
 - **Docker & Docker Compose** installed
-- (Optional) Node.js 18+ to run locally outside Docker
-- For Kubernetes: Minikube and kubectl installed
+- **Node.js 18+** (for local development)
+- **curl** (for testing APIs)
 
-### Docker Compose (Simplest)
+### Option 1: Microservices with API Gateway (Recommended)
 
-1. Start the application with Docker Compose:
-
-   ```bash
-   docker-compose up --build
-   ```
-
-2. Access the application:
-   - Frontend: http://localhost:5173
-   - API: http://localhost:3000
-   - API Documentation: http://localhost:3000/api/docs
-
-### Kubernetes with Load Balancing
-
-1. Start Minikube (if not already running):
+1. **Start the complete microservices stack:**
 
    ```bash
-   minikube start --driver=docker
+   cd services
+   docker-compose -f docker-compose.microservices.yml up --build -d
    ```
 
-2. Deploy the full stack with load balancing:
+2. **Start the API Gateway with security:**
 
    ```bash
-   scripts\deploy-with-loadbalancing.bat
+   cd api-gateway
+   start-gateway.bat
+   apply-security-config.bat
    ```
 
-3. Set up port forwarding to access the services:
+3. **Access the application:**
+   - **Frontend**: <http://localhost:5173>
+   - **API Gateway**: <http://localhost:8000>
+   - **Kong Admin**: <http://localhost:8001>
+   - **Prometheus**: <http://localhost:9090>
+   - **Grafana**: <http://localhost:3100> (admin/admin)
+
+### Option 2: With Internal Security (Advanced)
+
+1. **Start microservices and API Gateway** (as above)
+
+2. **Start internal security infrastructure:**
 
    ```bash
-   scripts\port-forward-all.bat
+   cd api-gateway
+   start-internal-security.bat
+   init-vault-secrets.bat
    ```
 
-4. Access the application:
-   - Main App: http://localhost:8080
-   - Direct API: http://localhost:8080/api
+3. **Additional security services:**
+   - **Consul**: <http://localhost:8500> (Service Discovery)
+   - **Vault**: <http://localhost:8200> (Secret Management)
 
-### Kubernetes without Load Balancing
+### Option 3: Load Balanced Services
 
-1. Start Minikube (if not already running):
+1. **Start load balanced microservices:**
 
    ```bash
-   minikube start --driver=docker
+   cd api-gateway
+   start-loadbalanced.bat
    ```
 
-2. Deploy the full stack with separate clients:
+2. **Test load balancing:**
 
    ```bash
-   scripts\deploy-fixed-server.bat
+   test-loadbalancing.bat
    ```
 
-3. Set up port forwarding to access the services:
+## Microservices Deployment
 
-   ```bash
-   scripts\port-forward-all.bat
-   ```
+### Individual Service Ports
 
-4. Access the application:
-   - Server API: http://localhost:3000
-   - Client 1: http://localhost:8081
-   - Client 2: http://localhost:8082
-   - Client 3: http://localhost:8083
+| Service         | Port | Description                        |
+| --------------- | ---- | ---------------------------------- |
+| Product Service | 3001 | Product catalog and management     |
+| User Service    | 3002 | Authentication and user management |
+| Store Service   | 3003 | Store information and operations   |
+| Stock Service   | 3004 | Inventory and stock management     |
+| Sales Service   | 3005 | Transaction processing             |
+| Refund Service  | 3006 | Return and refund processing       |
+| Cart Service    | 3007 | Shopping cart operations           |
 
-### Testing and Monitoring
+### Service Health Checks
 
-1. Set up monitoring port forwarding:
+Each microservice provides health check endpoints:
 
-   ```bash
-   scripts\port-forward-monitoring.bat
-   ```
+```bash
+# Check individual service health
+curl http://localhost:3001/health  # Product Service
+curl http://localhost:3002/health  # User Service
+curl http://localhost:3003/health  # Store Service
+# ... etc
+```
 
-2. Access monitoring tools:
+### Database and Cache
 
-   - Prometheus: http://localhost:9090
-   - Grafana: http://localhost:3001 (login: admin/admin)
+- **PostgreSQL**: Port 5432 (shared database)
+- **Redis**: Port 6379 (caching and sessions)
 
-3. Test caching performance:
+## API Gateway
 
-   ```bash
-   scripts\test-cache-performance.bat
-   ```
+The Kong API Gateway provides:
 
-4. Test load balancing:
+- **Unified API Access**: Single entry point for all services
+- **Load Balancing**: Automatic distribution across service instances
+- **Security**: JWT authentication, API keys, rate limiting
+- **Monitoring**: Prometheus metrics and health checks
 
-   ```bash
-   scripts\test-load-balancing.bat
-   ```
+### Gateway Endpoints
 
-5. Run k6 load tests:
+All services are accessible through the gateway:
 
-   ```bash
-   scripts\run-k6-tests.bat
-   ```
+```bash
+# Via API Gateway (recommended)
+curl -H "X-API-Key: testing-key-xyz123" http://localhost:8000/api/products
+curl -H "X-API-Key: testing-key-xyz123" http://localhost:8000/api/users
+curl -H "X-API-Key: testing-key-xyz123" http://localhost:8000/api/stores
+```
 
-6. Clean up all Kubernetes resources:
-   ```bash
-   scripts\cleanup-k8s.bat
-   ```
+### Security Features
+
+- **API Key Authentication**: Required for all external requests
+- **JWT Token Support**: For authenticated users
+- **Rate Limiting**: Prevents abuse and ensures fair usage
+- **CORS Protection**: Secure cross-origin requests
+- **Security Headers**: HSTS, CSP, XSS protection
+
+## Testing
+
+### API Testing
+
+```bash
+# Test API Gateway security
+cd api-gateway
+test-security-features.bat
+
+# Test JWT authentication
+test-jwt-features.bat
+
+# Test load balancing
+test-loadbalancing.bat
+
+# Test internal security
+test-internal-security.bat
+```
+
+### Load Testing
+
+```bash
+# Test cache performance
+cd scripts
+test-cache-performance.bat
+
+# Run k6 load tests
+run-k6-tests.bat
+```
+
+scripts\cleanup-k8s.bat
+
+````
 
 ## Local Development
 
@@ -169,7 +349,7 @@ Orchestration: Kubernetes with Minikube
 # To run the server
 cd server
 npm run start
-```
+````
 
 ```bash
 # To run the web application
@@ -273,12 +453,12 @@ The project integrates Prometheus and Grafana for metrics monitoring:
 
 ### Accessing Monitoring Tools
 
-#### With Docker Compose:
+#### With Docker Compose
 
-- Prometheus UI: http://localhost:9090
-- Grafana Dashboard: http://localhost:3001 (login: admin/admin)
+- Prometheus UI: <http://localhost:9090>
+- Grafana Dashboard: <http://localhost:3001> (login: admin/admin)
 
-#### With Kubernetes:
+#### With Kubernetes
 
 ```bash
 # Using the dedicated monitoring script (recommended)
@@ -371,34 +551,52 @@ npx prisma migrate reset
 npx prisma migrate dev --name init
 ```
 
-You need to reseed the data afterward for local developpment.
-
-## Testing
-
-Testing locally:
-
-```bash
-cd server
-npm test
-```
-
-For load testing:
-
-```bash
-scripts\run-k6-tests.bat
-```
-
 ## Project Structure
 
-Execute at the project root to generate the structure:
-
-```bash
-treee -l 4 --ignore "node_modules,.git" -o docs\structure.txt
+``` text
+log430-lab5/
+├── client/                     # React frontend application
+│   ├── src/
+│   ├── public/
+│   ├── package.json
+│   └── Dockerfile
+├── services/                   # Microservices directory
+│   ├── product-service/        # Product catalog service
+│   ├── user-service/          # Authentication service
+│   ├── store-service/         # Store management service
+│   ├── stock-service/         # Inventory service
+│   ├── sales-service/         # Transaction service
+│   ├── refund-service/        # Return processing service
+│   ├── cart-service/          # Shopping cart service
+│   ├── shared/                # Shared utilities and middleware
+│   ├── monitoring/            # Prometheus and Grafana config
+│   └── docker-compose.microservices.yml
+├── api-gateway/               # Kong API Gateway configuration
+│   ├── kong.yml              # Main gateway configuration
+│   ├── security-config.yml   # Security policies
+│   ├── docker-compose.*.yml  # Gateway deployment files
+│   └── *.bat                 # Management scripts
+├── k8s/                      # Kubernetes configurations
+│   ├── client.yaml
+│   ├── postgres.yaml
+│   ├── redis.yaml
+│   └── grafana.yaml
+├── scripts/                  # Utility scripts
+│   ├── run-k6-tests.bat
+│   ├── test-cache-performance.bat
+│   └── cleanup-k8s.bat
+├── docs/                     # Documentation
+│   ├── CACHING.md
+│   └── *.svg                 # Architecture diagrams
+└── plan.txt                  # Migration plan
 ```
 
 ## Additional Documentation
 
-- [Script files organization (scripts/)](README-scripts.md)
-- [Complete Kubernetes deployment guide](k8s/README.md)
-- [Redis caching implementation](docs/CACHING.md)
-- [Command Reference](docs/COMMAND-REFERENCE.md)
+- **API Gateway Setup**: [api-gateway/README.md](api-gateway/README.md)
+- **Phase 3 Summary**: [api-gateway/PHASE3-SUMMARY.md](api-gateway/PHASE3-SUMMARY.md)
+- **Phase 4 Summary**: [api-gateway/PHASE4-SUMMARY.md](api-gateway/PHASE4-SUMMARY.md)
+- **Microservices Guide**: [services/README.md](services/README.md)
+- **Kubernetes Deployment**: [k8s/README.md](k8s/README.md)
+- **Caching Implementation**: [docs/CACHING.md](docs/CACHING.md)
+- **Architecture Documentation**: [docs/](docs/)

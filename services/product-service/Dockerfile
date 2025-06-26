@@ -1,81 +1,52 @@
-# Product Service Dockerfile
-#
-# This Dockerfile creates a containerized version of the Product Service microservice.
-# It uses a multi-stage build approach for optimization and security.
-#
-# Build Process:
-# 1. Base stage: Sets up Node.js environment and installs dependencies
-# 2. Production stage: Creates minimal runtime image with only necessary files
-#
-# The resulting container:
-# - Runs as non-root user for security
-# - Exposes port 3001 for the product service
-# - Includes health check endpoint
-# - Optimized for production deployment
+FROM node:16-alpine
 
-# Build stage
-FROM node:18-alpine AS builder
+# Install dependencies required for Prisma
+RUN apk add --no-cache openssl
 
-# Set working directory
-WORKDIR /app
-
-# Copy package files for dependency installation
-COPY package*.json ./
-
-# Install all dependencies (including dev dependencies for build)
-RUN npm ci --only=production && npm cache clean --force
-
-# Production stage
-FROM node:18-alpine AS production
-
-# Create non-root user for security
+# Create a non-root user
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S productservice -u 1001
+    adduser -S nodejs -u 1001
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package.json files first to leverage Docker caching
+COPY ./services/shared/package.json ./services/shared/
+COPY ./services/product-service/package.json ./services/product-service/
+COPY ./fix-shared-modules.js .
 
-# Copy installed dependencies from builder stage
-COPY --from=builder /app/node_modules ./node_modules
+# Run the fix script to create proper export wrappers for shared modules
+RUN node fix-shared-modules.js
 
-# Copy application source code
-COPY --chown=productservice:nodejs . .
+# Install dependencies for shared module first
+WORKDIR /app/services/shared
+RUN npm install
 
-# Create directories with proper permissions
-RUN mkdir -p /app/logs && \
-    chown -R productservice:nodejs /app
+# Install dependencies for the service
+WORKDIR /app/services/product-service
+RUN npm install
 
-# Switch to non-root user
-USER productservice
+# Copy the rest of the application code
+COPY ./services/shared /app/services/shared
+COPY ./services/product-service /app/services/product-service
+COPY ./prisma /app/prisma
 
-# Expose port 3001 (product service default port)
+# Generate Prisma client
+WORKDIR /app
+ENV DATABASE_URL="postgresql://postgres:password@postgres:5432/log430_store" \
+    PRISMA_BINARY_PLATFORM="linux-musl"
+RUN npm install -g prisma@5.14.0 && \
+    npx prisma generate && \
+    mkdir -p /app/services/product-service/node_modules/.prisma && \
+    cp -r /app/node_modules/.prisma/client /app/services/product-service/node_modules/.prisma/
+
+# Set the working directory to the service's folder
+WORKDIR /app/services/product-service
+
+# Switch to the non-root user
+USER nodejs
+
+# Expose the port for the service
 EXPOSE 3001
 
-# Add health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "const http = require('http'); \
-    const options = { hostname: 'localhost', port: 3001, path: '/health', timeout: 2000 }; \
-    const req = http.request(options, (res) => { \
-      console.log('Health check status:', res.statusCode); \
-      process.exit(res.statusCode === 200 ? 0 : 1); \
-    }); \
-    req.on('error', () => process.exit(1)); \
-    req.on('timeout', () => process.exit(1)); \
-    req.end();"
-
-# Set environment variables
-ENV NODE_ENV=production
-ENV PORT=3001
-ENV SERVICE_NAME=product-service
-
-# Define the command to run the application
-CMD ["node", "server.js"]
-
-# Labels for container metadata
-LABEL maintainer="LOG430 Team"
-LABEL service="product-service"
-LABEL version="1.0.0"
-LABEL description="Product management microservice for LOG430 project"
+# Start the service
+CMD ["node", "server.js"] 

@@ -1,0 +1,92 @@
+# Prometheus configuration for API Gateway and Microservices monitoring
+# This configuration scrapes metrics from Kong Gateway and all microservices
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Rules for alerting (optional)
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# Scrape configuration
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Kong API Gateway metrics
+  - job_name: 'kong-gateway'
+    static_configs:
+      - targets: ['kong:8001']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Product Service
+  - job_name: 'product-service'
+    static_configs:
+      - targets: ['product-service:3001']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # User Service
+  - job_name: 'user-service'
+    static_configs:
+      - targets: ['user-service:3002']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Store Service
+  - job_name: 'store-service'
+    static_configs:
+      - targets: ['store-service:3003']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Stock Service
+  - job_name: 'stock-service'
+    static_configs:
+      - targets: ['stock-service:3004']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Sales Service
+  - job_name: 'sales-service'
+    static_configs:
+      - targets: ['sales-service:3005']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Refund Service
+  - job_name: 'refund-service'
+    static_configs:
+      - targets: ['refund-service:3006']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Cart Service
+  - job_name: 'cart-service'
+    static_configs:
+      - targets: ['cart-service:3007']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # PostgreSQL Exporter (optional - for database metrics)
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+
+  # Redis Exporter (optional - for cache metrics)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']

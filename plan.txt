@@ -56,12 +56,12 @@ For each service:
 ## Phase 3: API Gateway Implementation
 
 ### 3.1 Gateway Setup
-**Technology Choice:** Kong or KrakenD
+**Technology Choice:** Kong 
 **Structure:**
 ```
 api-gateway/
 ├── Dockerfile
-├── kong.yml (or krakenD.json)
+├── kong.yml 
 ├── plugins/
 └── docker-compose.gateway.yml
 ```

@@ -1,0 +1,181 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  labels:
+    app: prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      containers:
+      - name: prometheus
+        image: prom/prometheus:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 9090
+        args:
+          - '--config.file=/etc/prometheus/prometheus.yml'
+          - '--storage.tsdb.path=/prometheus'
+          - '--web.console.libraries=/etc/prometheus/console_libraries'
+          - '--web.console.templates=/etc/prometheus/consoles'
+          - '--storage.tsdb.retention.time=200h'
+          - '--web.enable-lifecycle'
+        volumeMounts:
+        - name: prometheus-config
+          mountPath: /etc/prometheus/
+        - name: prometheus-storage
+          mountPath: /prometheus
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: prometheus-config
+        configMap:
+          name: prometheus-config
+      - name: prometheus-storage
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-service
+  labels:
+    app: prometheus
+spec:
+  selector:
+    app: prometheus
+  ports:
+  - port: 9090
+    targetPort: 9090
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    rule_files:
+      # - "first_rules.yml"
+      # - "second_rules.yml"
+    
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+      
+      - job_name: 'kong-gateway'
+        static_configs:
+          - targets: ['kong-gateway-service:8001']
+      
+      - job_name: 'microservices'
+        static_configs:
+          - targets: 
+              - 'product-service-1:3001'
+              - 'product-service-2:3001'
+              - 'stock-service-1:3004'
+              - 'stock-service-2:3004'
+              - 'cart-service-1:3007'
+              - 'cart-service-2:3007'
+              - 'user-service:3002'
+              - 'store-service:3003'
+              - 'sales-service:3005'
+              - 'refund-service:3006'
+      
+      - job_name: 'infrastructure'
+        static_configs:
+          - targets:
+              - 'postgres-service:5432'
+              - 'redis-service:6379'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 3000
+        env:
+        - name: GF_SECURITY_ADMIN_USER
+          value: "admin"
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: "admin"
+        - name: GF_USERS_ALLOW_SIGN_UP
+          value: "false"
+        - name: GF_INSTALL_PLUGINS
+          value: "grafana-piechart-panel,grafana-worldmap-panel"
+        volumeMounts:
+        - name: grafana-storage
+          mountPath: /var/lib/grafana
+        - name: grafana-datasources
+          mountPath: /etc/grafana/provisioning/datasources
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: grafana-storage
+        emptyDir: {}
+      - name: grafana-datasources
+        configMap:
+          name: grafana-datasources
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-service
+  labels:
+    app: grafana
+spec:
+  selector:
+    app: grafana
+  ports:
+  - port: 3100
+    targetPort: 3000
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-service:9090
+        isDefault: true

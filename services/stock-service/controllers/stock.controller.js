@@ -14,577 +14,385 @@
  * - Comprehensive metrics and monitoring
  * 
  * @author Stock Service Team
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 import StockService from '../services/stock.service.js';
-import { ApiError } from '../middleware/errorHandler.js';
-import { promClient } from '../middleware/metrics.js';
-import logger from '../utils/logger.js';
 
-// Metrics for stock operations
-const stockOperationCounter = new promClient.Counter({
-  name: 'stock_operations_total',
-  help: 'Total number of stock operations',
-  labelNames: ['operation', 'status', 'store_id']
-});
-
-const stockOperationDuration = new promClient.Histogram({
-  name: 'stock_operation_duration_seconds',
-  help: 'Duration of stock operations in seconds',
-  labelNames: ['operation']
-});
-
-const stockLevelGauge = new promClient.Gauge({
-  name: 'stock_level_current',
-  help: 'Current stock levels',
-  labelNames: ['product_id', 'store_id']
-});
+// Import shared components
+import {
+  ValidationError,
+  logger,
+  asyncHandler,
+  recordOperation
+} from '@log430/shared';
 
 /**
  * Get Stock by Product Controller
  * 
- * Retrieves stock information for a specific product across all stores.
- * Provides visibility into product availability across the entire network.
- * 
- * @param {Request} req - Express request object with product ID parameter
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- * 
- * Parameters:
- * - productId: Product ID (integer)
- * 
- * Query Parameters:
- * - includeZero: Include stores with zero stock (default: false)
- * - minQuantity: Filter by minimum stock quantity
- * 
- * Response: 200 OK with stock data across stores
+ * Retrieves stock information for a specific product across all stores
  */
-export async function getByProduct(req, res, next) {
-  const timer = stockOperationDuration.startTimer({ operation: 'get_by_product' });
-  
+export const getByProduct = asyncHandler(async (req, res) => {
+  const { productId } = req.params;
+  const { includeZero = false, minQuantity } = req.query;
+
+  // Input validation
+  if (!productId || isNaN(productId)) {
+    throw new ValidationError('Valid product ID is required');
+  }
+
+  logger.info('Retrieving stock by product', {
+    productId,
+    includeZero,
+    minQuantity,
+    userId: req.user?.id
+  });
+
+  recordOperation('stock_get_by_product', 'start');
+
   try {
-    const { productId } = req.params;
-    const { includeZero = false, minQuantity = 0 } = req.query;
-    
-    if (!productId || isNaN(parseInt(productId))) {
-      throw new ApiError(400, 'Valid product ID is required');
-    }
-    
-    const stocks = await StockService.getStockByProduct(parseInt(productId), {
+    const options = {
       includeZero: includeZero === 'true',
-      minQuantity: parseInt(minQuantity) || 0
+      minQuantity: minQuantity ? parseInt(minQuantity) : undefined
+    };
+
+    const stockData = await StockService.getByProduct(productId, options, req.user);
+
+    recordOperation('stock_get_by_product', 'success');
+
+    logger.info('Stock retrieved by product successfully', {
+      productId,
+      storeCount: stockData.length,
+      totalQuantity: stockData.reduce((sum, stock) => sum + stock.quantity, 0)
     });
-    
-    // Update metrics
-    stocks.forEach(stock => {
-      stockLevelGauge.set(
-        { product_id: stock.productId, store_id: stock.storeId },
-        stock.quantity
-      );
-    });
-    
-    stockOperationCounter.inc({ operation: 'get_by_product', status: 'success' });
-    
-    logger.logStockOperation('get_by_product', { productId, resultCount: stocks.length }, req.user?.id);
-    
+
     res.json({
       success: true,
-      data: stocks,
-      meta: {
-        productId: parseInt(productId),
-        totalStores: stocks.length,
-        totalQuantity: stocks.reduce((sum, stock) => sum + stock.quantity, 0),
-        availableStores: stocks.filter(stock => stock.quantity > 0).length
-      }
+      data: stockData
     });
   } catch (error) {
-    stockOperationCounter.inc({ operation: 'get_by_product', status: 'error' });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('stock_get_by_product', 'error');
+    throw error;
   }
-}
+});
 
 /**
  * Get Stock by Store Controller
  * 
- * Retrieves all stock information for a specific store.
- * Provides complete inventory view for store management.
- * 
- * @param {Request} req - Express request object with store ID parameter
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- * 
- * Parameters:
- * - storeId: Store ID (integer)
- * 
- * Query Parameters:
- * - page: Page number for pagination (default: 1)
- * - limit: Items per page (default: 50, max: 200)
- * - includeZero: Include products with zero stock (default: false)
- * - category: Filter by product category
- * - lowStock: Show only low stock items (quantity < threshold)
- * - threshold: Low stock threshold (default: 10)
- * 
- * Response: 200 OK with paginated stock data for store
+ * Retrieves all stock information for a specific store
  */
-export async function getByStore(req, res, next) {
-  const timer = stockOperationDuration.startTimer({ operation: 'get_by_store' });
-  
+export const getByStore = asyncHandler(async (req, res) => {
+  const { storeId } = req.params;
+  const { page = 1, limit = 50, category, lowStock, minQuantity } = req.query;
+
+  // Input validation
+  if (!storeId || isNaN(storeId)) {
+    throw new ValidationError('Valid store ID is required');
+  }
+
+  logger.info('Retrieving stock by store', {
+    storeId,
+    page,
+    limit,
+    category,
+    lowStock,
+    userId: req.user?.id
+  });
+
+  recordOperation('stock_get_by_store', 'start');
+
   try {
-    const { storeId } = req.params;
-    const { 
-      page = 1, 
-      limit = 50, 
-      includeZero = false, 
-      category,
-      lowStock = false,
-      threshold = 10
-    } = req.query;
-    
-    if (!storeId || isNaN(parseInt(storeId))) {
-      throw new ApiError(400, 'Valid store ID is required');
-    }
-    
-    const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit)));
-    
-    const result = await StockService.getStockByStore(parseInt(storeId), {
-      page: pageNum,
-      limit: limitNum,
-      includeZero: includeZero === 'true',
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
       category,
       lowStock: lowStock === 'true',
-      threshold: parseInt(threshold) || 10
+      minQuantity: minQuantity ? parseInt(minQuantity) : undefined
+    };
+
+    const result = await StockService.getByStore(storeId, options, req.user);
+
+    recordOperation('stock_get_by_store', 'success');
+
+    logger.info('Stock retrieved by store successfully', {
+      storeId,
+      productCount: result.products?.length || 0,
+      totalProducts: result.total
     });
-    
-    // Update metrics for each stock item
-    result.stocks.forEach(stock => {
-      stockLevelGauge.set(
-        { product_id: stock.productId, store_id: stock.storeId },
-        stock.quantity
-      );
-    });
-    
-    stockOperationCounter.inc({ 
-      operation: 'get_by_store', 
-      status: 'success', 
-      store_id: storeId 
-    });
-    
-    logger.logStockOperation('get_by_store', { 
-      storeId, 
-      resultCount: result.stocks.length,
-      totalItems: result.total 
-    }, req.user?.id);
-    
+
     res.json({
       success: true,
-      data: result.stocks,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total: result.total,
-        totalPages: Math.ceil(result.total / limitNum),
-        hasNext: pageNum < Math.ceil(result.total / limitNum),
-        hasPrev: pageNum > 1
-      },
-      meta: {
-        storeId: parseInt(storeId),
-        totalProducts: result.total,
-        inStock: result.inStockCount,
-        outOfStock: result.outOfStockCount,
-        lowStock: result.lowStockCount
-      }
+      data: result
     });
   } catch (error) {
-    stockOperationCounter.inc({ 
-      operation: 'get_by_store', 
-      status: 'error', 
-      store_id: req.params.storeId 
-    });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('stock_get_by_store', 'error');
+    throw error;
   }
-}
+});
 
 /**
  * Update Stock Controller
  * 
- * Updates stock quantity for a specific product in a specific store.
- * Supports both absolute updates and relative adjustments.
- * 
- * @param {Request} req - Express request object with stock update data
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- * 
- * Body Requirements:
- * - productId: Product ID (integer)
- * - storeId: Store ID (integer)
- * - quantity: New quantity (integer, >= 0) OR adjustment amount if type is 'adjustment'
- * - type: Update type ('set' or 'adjustment') - default: 'set'
- * - reason: Reason for stock change (optional)
- * 
- * Response: 201 Created with updated stock information
+ * Updates stock quantity for a specific product in a store
  */
-export async function updateStock(req, res, next) {
-  const timer = stockOperationDuration.startTimer({ operation: 'update_stock' });
-  
+export const updateStock = asyncHandler(async (req, res) => {
+  const { storeId, productId } = req.params;
+  const { quantity, operation, reason, notes } = req.body;
+
+  // Input validation
+  if (!storeId || isNaN(storeId)) {
+    throw new ValidationError('Valid store ID is required');
+  }
+
+  if (!productId || isNaN(productId)) {
+    throw new ValidationError('Valid product ID is required');
+  }
+
+  if (quantity === undefined || isNaN(quantity)) {
+    throw new ValidationError('Valid quantity is required');
+  }
+
+  if (!operation || !['set', 'add', 'subtract'].includes(operation)) {
+    throw new ValidationError('Operation must be one of: set, add, subtract');
+  }
+
+  logger.info('Updating stock', {
+    storeId,
+    productId,
+    quantity,
+    operation,
+    reason,
+    userId: req.user?.id
+  });
+
+  recordOperation('stock_update', 'start');
+
   try {
-    const { productId, storeId, quantity, type = 'set', reason } = req.body;
-    
-    // Validation
-    if (!productId || isNaN(parseInt(productId))) {
-      throw new ApiError(400, 'Valid product ID is required');
-    }
-    
-    if (!storeId || isNaN(parseInt(storeId))) {
-      throw new ApiError(400, 'Valid store ID is required');
-    }
-    
-    if (quantity === undefined || isNaN(parseInt(quantity))) {
-      throw new ApiError(400, 'Valid quantity is required');
-    }
-    
-    if (!['set', 'adjustment'].includes(type)) {
-      throw new ApiError(400, 'Type must be either "set" or "adjustment"');
-    }
-    
     const updateData = {
-      productId: parseInt(productId),
-      storeId: parseInt(storeId),
       quantity: parseInt(quantity),
-      type,
+      operation,
       reason,
+      notes,
       userId: req.user?.id
     };
-    
-    const stock = await StockService.updateStock(updateData);
-    
-    // Update metrics
-    stockLevelGauge.set(
-      { product_id: stock.productId, store_id: stock.storeId },
-      stock.quantity
-    );
-    
-    stockOperationCounter.inc({ 
-      operation: 'update_stock', 
-      status: 'success', 
-      store_id: storeId 
+
+    const stockUpdate = await StockService.updateStock(storeId, productId, updateData, req.user);
+
+    recordOperation('stock_update', 'success');
+
+    logger.info('Stock updated successfully', {
+      storeId,
+      productId,
+      previousQuantity: stockUpdate.previousQuantity,
+      newQuantity: stockUpdate.newQuantity,
+      operation
     });
-    
-    logger.logStockOperation('update_stock', {
-      productId: stock.productId,
-      storeId: stock.storeId,
-      oldQuantity: stock.previousQuantity,
-      newQuantity: stock.quantity,
-      type,
-      reason
-    }, req.user?.id);
-    
-    res.status(200).json({
+
+    res.json({
       success: true,
       message: 'Stock updated successfully',
-      data: stock
+      data: stockUpdate
     });
   } catch (error) {
-    stockOperationCounter.inc({ 
-      operation: 'update_stock', 
-      status: 'error', 
-      store_id: req.body.storeId 
-    });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('stock_update', 'error');
+    throw error;
   }
-}
+});
 
 /**
  * Bulk Update Stock Controller
  * 
- * Updates multiple stock items in a single transaction.
- * Useful for inventory adjustments, transfers, and bulk operations.
- * 
- * @param {Request} req - Express request object with bulk update data
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- * 
- * Body Requirements:
- * - updates: Array of stock updates
- *   - productId: Product ID (integer)
- *   - storeId: Store ID (integer)
- *   - quantity: New quantity or adjustment amount (integer)
- *   - type: 'set' or 'adjustment' (default: 'set')
- * - reason: Reason for bulk update (optional)
- * 
- * Response: 200 OK with bulk update results
+ * Updates stock quantities for multiple products in a store
  */
-export async function bulkUpdateStock(req, res, next) {
-  const timer = stockOperationDuration.startTimer({ operation: 'bulk_update_stock' });
-  
+export const bulkUpdateStock = asyncHandler(async (req, res) => {
+  const { storeId } = req.params;
+  const { updates, operation = 'set', reason } = req.body;
+
+  // Input validation
+  if (!storeId || isNaN(storeId)) {
+    throw new ValidationError('Valid store ID is required');
+  }
+
+  if (!updates || !Array.isArray(updates) || updates.length === 0) {
+    throw new ValidationError('Updates array is required and must not be empty');
+  }
+
+  // Validate each update
+  for (const update of updates) {
+    if (!update.productId || isNaN(update.productId)) {
+      throw new ValidationError('Each update must have a valid product ID');
+    }
+    if (update.quantity === undefined || isNaN(update.quantity)) {
+      throw new ValidationError('Each update must have a valid quantity');
+    }
+  }
+
+  if (!['set', 'add', 'subtract'].includes(operation)) {
+    throw new ValidationError('Operation must be one of: set, add, subtract');
+  }
+
+  logger.info('Bulk updating stock', {
+    storeId,
+    updateCount: updates.length,
+    operation,
+    reason,
+    userId: req.user?.id
+  });
+
+  recordOperation('stock_bulk_update', 'start');
+
   try {
-    const { updates, reason } = req.body;
-    
-    if (!Array.isArray(updates) || updates.length === 0) {
-      throw new ApiError(400, 'Updates array is required and must not be empty');
-    }
-    
-    if (updates.length > 100) {
-      throw new ApiError(400, 'Maximum 100 updates allowed per request');
-    }
-    
-    // Validate each update
-    for (const update of updates) {
-      if (!update.productId || isNaN(parseInt(update.productId))) {
-        throw new ApiError(400, 'Each update must have a valid product ID');
-      }
-      if (!update.storeId || isNaN(parseInt(update.storeId))) {
-        throw new ApiError(400, 'Each update must have a valid store ID');
-      }
-      if (update.quantity === undefined || isNaN(parseInt(update.quantity))) {
-        throw new ApiError(400, 'Each update must have a valid quantity');
-      }
-      if (update.type && !['set', 'adjustment'].includes(update.type)) {
-        throw new ApiError(400, 'Update type must be either "set" or "adjustment"');
-      }
-    }
-    
-    const updateData = {
+    const bulkData = {
       updates: updates.map(update => ({
         productId: parseInt(update.productId),
-        storeId: parseInt(update.storeId),
         quantity: parseInt(update.quantity),
-        type: update.type || 'set'
+        reason: update.reason || reason,
+        notes: update.notes
       })),
+      operation,
       reason,
       userId: req.user?.id
     };
-    
-    const results = await StockService.bulkUpdateStock(updateData);
-    
-    // Update metrics for successful updates
-    results.successful.forEach(stock => {
-      stockLevelGauge.set(
-        { product_id: stock.productId, store_id: stock.storeId },
-        stock.quantity
-      );
+
+    const result = await StockService.bulkUpdateStock(storeId, bulkData, req.user);
+
+    recordOperation('stock_bulk_update', 'success');
+
+    logger.info('Bulk stock update completed', {
+      storeId,
+      successCount: result.successful?.length || 0,
+      errorCount: result.errors?.length || 0,
+      operation
     });
-    
-    stockOperationCounter.inc({ 
-      operation: 'bulk_update_stock', 
-      status: 'success'
-    });
-    
-    logger.logStockOperation('bulk_update_stock', {
-      totalUpdates: updates.length,
-      successful: results.successful.length,
-      failed: results.failed.length,
-      reason
-    }, req.user?.id);
-    
-    const statusCode = results.failed.length > 0 ? 207 : 200; // 207 Multi-Status if some failed
-    
-    res.status(statusCode).json({
-      success: results.failed.length === 0,
-      message: `Bulk update completed. ${results.successful.length} successful, ${results.failed.length} failed`,
-      data: {
-        successful: results.successful,
-        failed: results.failed,
-        summary: {
-          total: updates.length,
-          successful: results.successful.length,
-          failed: results.failed.length
-        }
-      }
+
+    res.json({
+      success: true,
+      message: 'Bulk stock update completed',
+      data: result
     });
   } catch (error) {
-    stockOperationCounter.inc({ 
-      operation: 'bulk_update_stock', 
-      status: 'error'
-    });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('stock_bulk_update', 'error');
+    throw error;
   }
-}
+});
 
 /**
  * Transfer Stock Controller
  * 
- * Transfers stock from one store to another.
- * Ensures atomic operation with proper validation.
- * 
- * @param {Request} req - Express request object with transfer data
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- * 
- * Body Requirements:
- * - productId: Product ID (integer)
- * - fromStoreId: Source store ID (integer)
- * - toStoreId: Destination store ID (integer)
- * - quantity: Quantity to transfer (integer, > 0)
- * - reason: Reason for transfer (optional)
- * 
- * Response: 200 OK with transfer details
+ * Transfers stock between two stores
  */
-export async function transferStock(req, res, next) {
-  const timer = stockOperationDuration.startTimer({ operation: 'transfer_stock' });
-  
+export const transferStock = asyncHandler(async (req, res) => {
+  const { fromStoreId, toStoreId, productId, quantity, reason, notes } = req.body;
+
+  // Input validation
+  if (!fromStoreId || isNaN(fromStoreId)) {
+    throw new ValidationError('Valid source store ID is required');
+  }
+
+  if (!toStoreId || isNaN(toStoreId)) {
+    throw new ValidationError('Valid destination store ID is required');
+  }
+
+  if (!productId || isNaN(productId)) {
+    throw new ValidationError('Valid product ID is required');
+  }
+
+  if (!quantity || isNaN(quantity) || quantity <= 0) {
+    throw new ValidationError('Valid positive quantity is required');
+  }
+
+  if (fromStoreId === toStoreId) {
+    throw new ValidationError('Source and destination stores must be different');
+  }
+
+  logger.info('Transferring stock between stores', {
+    fromStoreId,
+    toStoreId,
+    productId,
+    quantity,
+    reason,
+    userId: req.user?.id
+  });
+
+  recordOperation('stock_transfer', 'start');
+
   try {
-    const { productId, fromStoreId, toStoreId, quantity, reason } = req.body;
-    
-    // Validation
-    if (!productId || isNaN(parseInt(productId))) {
-      throw new ApiError(400, 'Valid product ID is required');
-    }
-    
-    if (!fromStoreId || isNaN(parseInt(fromStoreId))) {
-      throw new ApiError(400, 'Valid source store ID is required');
-    }
-    
-    if (!toStoreId || isNaN(parseInt(toStoreId))) {
-      throw new ApiError(400, 'Valid destination store ID is required');
-    }
-    
-    if (!quantity || isNaN(parseInt(quantity)) || parseInt(quantity) <= 0) {
-      throw new ApiError(400, 'Valid quantity greater than 0 is required');
-    }
-    
-    if (parseInt(fromStoreId) === parseInt(toStoreId)) {
-      throw new ApiError(400, 'Source and destination stores must be different');
-    }
-    
     const transferData = {
-      productId: parseInt(productId),
       fromStoreId: parseInt(fromStoreId),
       toStoreId: parseInt(toStoreId),
+      productId: parseInt(productId),
       quantity: parseInt(quantity),
       reason,
+      notes,
       userId: req.user?.id
     };
-    
-    const result = await StockService.transferStock(transferData);
-    
-    // Update metrics for both stores
-    stockLevelGauge.set(
-      { product_id: result.fromStock.productId, store_id: result.fromStock.storeId },
-      result.fromStock.quantity
-    );
-    stockLevelGauge.set(
-      { product_id: result.toStock.productId, store_id: result.toStock.storeId },
-      result.toStock.quantity
-    );
-    
-    stockOperationCounter.inc({ 
-      operation: 'transfer_stock', 
-      status: 'success', 
-      store_id: `${fromStoreId}_to_${toStoreId}` 
-    });
-    
-    logger.logStockOperation('transfer_stock', {
-      productId: result.productId,
+
+    const transfer = await StockService.transferStock(transferData, req.user);
+
+    recordOperation('stock_transfer', 'success');
+
+    logger.info('Stock transfer completed successfully', {
+      transferId: transfer.id,
       fromStoreId,
       toStoreId,
-      quantity,
-      reason,
-      transferId: result.transferId
-    }, req.user?.id);
-    
+      productId,
+      quantity
+    });
+
     res.json({
       success: true,
-      message: 'Stock transferred successfully',
-      data: result
+      message: 'Stock transfer completed successfully',
+      data: transfer
     });
   } catch (error) {
-    stockOperationCounter.inc({ 
-      operation: 'transfer_stock', 
-      status: 'error', 
-      store_id: `${req.body.fromStoreId}_to_${req.body.toStoreId}` 
-    });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('stock_transfer', 'error');
+    throw error;
   }
-}
+});
 
 /**
  * Get Stock Summary Controller
  * 
- * Provides aggregated stock information and analytics.
- * Useful for dashboards and inventory management overview.
- * 
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- * 
- * Query Parameters:
- * - storeId: Filter by specific store (optional)
- * - productId: Filter by specific product (optional)
- * - category: Filter by product category (optional)
- * - lowStockThreshold: Threshold for low stock alerts (default: 10)
- * 
- * Response: 200 OK with stock summary and analytics
+ * Retrieves stock summary and analytics
  */
-export async function getStockSummary(req, res, next) {
-  const timer = stockOperationDuration.startTimer({ operation: 'get_stock_summary' });
-  
+export const getStockSummary = asyncHandler(async (req, res) => {
+  const { storeId, period, category, lowStockThreshold } = req.query;
+
+  logger.info('Retrieving stock summary', {
+    storeId,
+    period,
+    category,
+    lowStockThreshold,
+    userId: req.user?.id
+  });
+
+  recordOperation('stock_summary', 'start');
+
   try {
-    const { storeId, productId, category, lowStockThreshold = 10 } = req.query;
-    
-    const filters = {};
-    if (storeId && !isNaN(parseInt(storeId))) {
-      filters.storeId = parseInt(storeId);
-    }
-    if (productId && !isNaN(parseInt(productId))) {
-      filters.productId = parseInt(productId);
-    }
-    if (category) {
-      filters.category = category;
-    }
-    filters.lowStockThreshold = parseInt(lowStockThreshold) || 10;
-    
-    const summary = await StockService.getStockSummary(filters);
-    
-    stockOperationCounter.inc({ 
-      operation: 'get_stock_summary', 
-      status: 'success'
+    const options = {
+      storeId: storeId ? parseInt(storeId) : undefined,
+      period,
+      category,
+      lowStockThreshold: lowStockThreshold ? parseInt(lowStockThreshold) : undefined
+    };
+
+    const summary = await StockService.getStockSummary(options, req.user);
+
+    recordOperation('stock_summary', 'success');
+
+    logger.info('Stock summary retrieved successfully', {
+      storeId,
+      totalProducts: summary.totalProducts,
+      lowStockItems: summary.lowStockItems?.length || 0,
+      totalValue: summary.totalValue
     });
-    
-    logger.logStockOperation('get_stock_summary', {
-      filters,
-      resultSummary: {
-        totalProducts: summary.totalProducts,
-        totalStores: summary.totalStores,
-        lowStockItems: summary.lowStockItems.length
-      }
-    }, req.user?.id);
-    
+
     res.json({
       success: true,
-      data: summary,
-      meta: {
-        filters,
-        generatedAt: new Date().toISOString()
-      }
+      data: summary
     });
   } catch (error) {
-    stockOperationCounter.inc({ 
-      operation: 'get_stock_summary', 
-      status: 'error'
-    });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('stock_summary', 'error');
+    throw error;
   }
-}
-
-export default {
-  getByProduct,
-  getByStore,
-  updateStock,
-  bulkUpdateStock,
-  transferStock,
-  getStockSummary
-};
+});

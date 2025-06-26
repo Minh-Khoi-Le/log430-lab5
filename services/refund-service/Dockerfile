@@ -1,78 +1,44 @@
-# Refund Service Dockerfile
-# Multi-stage build for optimized production image
+FROM node:18-alpine
 
-# Development stage
-FROM node:18-alpine AS development
+# Create a non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package.json files first to leverage Docker caching
+COPY ./services/shared/package.json ./services/shared/
+COPY ./services/refund-service/package.json ./services/refund-service/
+COPY ./fix-shared-modules.js .
 
-# Install all dependencies (including dev dependencies)
-RUN npm ci
+# Run the fix script to create proper export wrappers for shared modules
+RUN node fix-shared-modules.js
 
-# Copy source code
-COPY . .
+# Install dependencies for shared module first
+WORKDIR /app/services/shared
+RUN npm install
 
-# Expose port
-EXPOSE 3005
+# Install dependencies for the service
+WORKDIR /app/services/refund-service
+RUN npm install
 
-# Command for development
-CMD ["npm", "run", "dev"]
-
-# Production build stage
-FROM node:18-alpine AS builder
-
-# Set working directory
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install all dependencies
-RUN npm ci
-
-# Copy source code
-COPY . .
+# Copy the rest of the application code
+COPY ./services/shared /app/services/shared
+COPY ./services/refund-service /app/services/refund-service
+COPY ./prisma /app/prisma
 
 # Generate Prisma client
-RUN npx prisma generate
-
-# Production stage
-FROM node:18-alpine AS production
-
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S refundservice -u 1001
-
-# Set working directory
 WORKDIR /app
+RUN npm install -g prisma@5.14.0 && npx prisma generate
 
-# Copy package files
-COPY package*.json ./
+# Set the working directory to the service's folder
+WORKDIR /app/services/refund-service
 
-# Install only production dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Switch to the non-root user
+USER nodejs
 
-# Copy built application from builder stage
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/prisma ./prisma
-COPY --chown=refundservice:nodejs . .
+# Expose the port for the service
+EXPOSE 3006
 
-# Create logs directory
-RUN mkdir -p /app/logs && chown refundservice:nodejs /app/logs
-
-# Switch to non-root user
-USER refundservice
-
-# Expose port
-EXPOSE 3005
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3005/health || exit 1
-
-# Command to run the application
-CMD ["npm", "start"]
+# Start the service
+CMD ["node", "server.js"] 

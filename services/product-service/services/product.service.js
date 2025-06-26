@@ -17,7 +17,6 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { recordDatabaseOperation } from '../middleware/metrics.js';
 
 // Initialize Prisma client
 const prisma = new PrismaClient();
@@ -82,44 +81,42 @@ export async function list(options) {
     }
   }
 
-  return recordDatabaseOperation('list_products', async () => {
-    // Get total count for pagination
-    const total = await prisma.product.count({ where });
-    
-    // Get products
-    const products = await prisma.product.findMany({
-      where,
-      orderBy,
-      skip: offset,
-      take: limit,
-      include: {
-        stocks: {
-          include: {
-            store: {
-              select: { id: true, name: true }
-            }
+  // Get total count for pagination
+  const total = await prisma.product.count({ where });
+  
+  // Get products
+  const products = await prisma.product.findMany({
+    where,
+    orderBy,
+    skip: offset,
+    take: limit,
+    include: {
+      stocks: {
+        include: {
+          store: {
+            select: { id: true, name: true }
           }
         }
       }
-    });
-
-    // Calculate pagination metadata
-    const pages = Math.ceil(total / limit);
-    const hasNext = page < pages;
-    const hasPrev = page > 1;
-
-    return {
-      products,
-      pagination: {
-        page,
-        size: limit,
-        total,
-        pages,
-        hasNext,
-        hasPrev
-      }
-    };
+    }
   });
+
+  // Calculate pagination metadata
+  const pages = Math.ceil(total / limit);
+  const hasNext = page < pages;
+  const hasPrev = page > 1;
+
+  return {
+    products,
+    pagination: {
+      page,
+      size: limit,
+      total,
+      pages,
+      hasNext,
+      hasPrev
+    }
+  };
 }
 
 /**
@@ -131,46 +128,44 @@ export async function list(options) {
  * @returns {Promise<Object|null>} - Promise resolving to product object or null
  */
 export async function get(id) {
-  return recordDatabaseOperation('get_product', async () => {
-    const product = await prisma.product.findUnique({
-      where: { id: parseInt(id) },
-      include: {
-        stocks: {
-          include: {
-            store: {
-              select: { id: true, name: true, address: true }
-            }
+  const product = await prisma.product.findUnique({
+    where: { id: parseInt(id) },
+    include: {
+      stocks: {
+        include: {
+          store: {
+            select: { id: true, name: true, address: true }
           }
-        },
-        saleLines: {
-          select: { id: true, quantity: true, unitPrice: true },
-          take: 10, // Limit recent sales for performance
-          orderBy: { id: 'desc' }
         }
+      },
+      saleLines: {
+        select: { id: true, quantity: true, unitPrice: true },
+        take: 10, // Limit recent sales for performance
+        orderBy: { id: 'desc' }
       }
-    });
-
-    // If product not found, return null
-    if (!product) {
-      return null;
     }
-
-    // Add computed fields for business logic
-    const totalStock = product.stocks.reduce((sum, stock) => sum + stock.quantity, 0);
-    const availableInStores = product.stocks.filter(stock => stock.quantity > 0).length;
-    const totalStores = product.stocks.length;
-
-    return {
-      ...product,
-      computed: {
-        totalStock,
-        availableInStores,
-        totalStores,
-        isAvailable: totalStock > 0,
-        lastUpdated: new Date().toISOString()
-      }
-    };
   });
+
+  // If product not found, return null
+  if (!product) {
+    return null;
+  }
+
+  // Add computed fields for business logic
+  const totalStock = product.stocks.reduce((sum, stock) => sum + stock.quantity, 0);
+  const availableInStores = product.stocks.filter(stock => stock.quantity > 0).length;
+  const totalStores = product.stocks.length;
+
+  return {
+    ...product,
+    computed: {
+      totalStock,
+      availableInStores,
+      totalStores,
+      isAvailable: totalStock > 0,
+      lastUpdated: new Date().toISOString()
+    }
+  };
 }
 
 /**
@@ -195,49 +190,47 @@ export async function create(data) {
     throw new Error('Product price is required and must be non-negative');
   }
 
-  return recordDatabaseOperation('create_product', async () => {
-    // Use transaction to create product and initialize stock
-    return prisma.$transaction(async (tx) => {
-      // Create the product
-      const product = await tx.product.create({
-        data: {
-          name: data.name.trim(),
-          price: parseFloat(data.price),
-          description: data.description ? data.description.trim() : null
-        }
-      });
-
-      // Get all existing stores
-      const stores = await tx.store.findMany({
-        select: { id: true }
-      });
-
-      // Create stock entries for all stores with quantity 0
-      if (stores.length > 0) {
-        const stockData = stores.map(store => ({
-          productId: product.id,
-          storeId: store.id,
-          quantity: 0
-        }));
-
-        await tx.stock.createMany({
-          data: stockData
-        });
+  // Use transaction to create product and initialize stock
+  return prisma.$transaction(async (tx) => {
+    // Create the product
+    const product = await tx.product.create({
+      data: {
+        name: data.name.trim(),
+        price: parseFloat(data.price),
+        description: data.description ? data.description.trim() : null
       }
+    });
 
-      // Return product with stock information
-      return tx.product.findUnique({
-        where: { id: product.id },
-        include: {
-          stocks: {
-            include: {
-              store: {
-                select: { id: true, name: true }
-              }
+    // Get all existing stores
+    const stores = await tx.store.findMany({
+      select: { id: true }
+    });
+
+    // Create stock entries for all stores with quantity 0
+    if (stores.length > 0) {
+      const stockData = stores.map(store => ({
+        productId: product.id,
+        storeId: store.id,
+        quantity: 0
+      }));
+
+      await tx.stock.createMany({
+        data: stockData
+      });
+    }
+
+    // Return product with stock information
+    return tx.product.findUnique({
+      where: { id: product.id },
+      include: {
+        stocks: {
+          include: {
+            store: {
+              select: { id: true, name: true }
             }
           }
         }
-      });
+      }
     });
   });
 }
@@ -279,29 +272,17 @@ export async function update(id, data) {
     return get(id);
   }
 
-  return recordDatabaseOperation('update_product', async () => {
-    try {
-      const product = await prisma.product.update({
-        where: { id: parseInt(id) },
-        data: updateData,
+  return prisma.product.update({
+    where: { id: parseInt(id) },
+    data: updateData,
+    include: {
+      stocks: {
         include: {
-          stocks: {
-            include: {
-              store: {
-                select: { id: true, name: true }
-              }
-            }
+          store: {
+            select: { id: true, name: true }
           }
         }
-      });
-
-      return product;
-    } catch (error) {
-      // Handle record not found
-      if (error.code === 'P2025') {
-        return null;
       }
-      throw error;
     }
   });
 }
@@ -316,31 +297,18 @@ export async function update(id, data) {
  * @returns {Promise<boolean>} - Promise resolving to true if deleted, false if not found
  */
 export async function remove(id) {
-  return recordDatabaseOperation('delete_product', async () => {
-    try {
-      // Use transaction to delete product and related data
-      await prisma.$transaction(async (tx) => {
-        // First, delete stock entries
-        await tx.stock.deleteMany({
-          where: { productId: parseInt(id) }
-        });
+  return prisma.$transaction(async (tx) => {
+    // First, delete stock entries
+    await tx.stock.deleteMany({
+      where: { productId: parseInt(id) }
+    });
 
-        // Then delete the product
-        await tx.product.delete({
-          where: { id: parseInt(id) }
-        });
-      });
+    // Then delete the product
+    await tx.product.delete({
+      where: { id: parseInt(id) }
+    });
 
-      return true;
-    } catch (error) {
-      // Handle record not found
-      if (error.code === 'P2025') {
-        return false;
-      }
-      
-      // Rethrow other errors (like foreign key constraints)
-      throw error;
-    }
+    return true;
   });
 }
 
@@ -353,53 +321,51 @@ export async function remove(id) {
  * @returns {Promise<Object|null>} - Promise resolving to availability data or null
  */
 export async function getAvailability(id) {
-  return recordDatabaseOperation('get_availability', async () => {
-    const product = await prisma.product.findUnique({
-      where: { id: parseInt(id) },
-      select: {
-        id: true,
-        name: true,
-        price: true,
-        stocks: {
-          include: {
-            store: {
-              select: { id: true, name: true, address: true }
-            }
-          },
-          orderBy: { quantity: 'desc' }
-        }
+  const product = await prisma.product.findUnique({
+    where: { id: parseInt(id) },
+    select: {
+      id: true,
+      name: true,
+      price: true,
+      stocks: {
+        include: {
+          store: {
+            select: { id: true, name: true, address: true }
+          }
+        },
+        orderBy: { quantity: 'desc' }
       }
-    });
-
-    if (!product) {
-      return null;
     }
-
-    // Calculate availability metrics
-    const totalStock = product.stocks.reduce((sum, stock) => sum + stock.quantity, 0);
-    const availableStores = product.stocks.filter(stock => stock.quantity > 0);
-    const outOfStockStores = product.stocks.filter(stock => stock.quantity === 0);
-
-    return {
-      product: {
-        id: product.id,
-        name: product.name,
-        price: product.price
-      },
-      availability: {
-        totalStock,
-        totalStores: product.stocks.length,
-        availableInStores: availableStores.length,
-        outOfStockInStores: outOfStockStores.length,
-        isAvailable: totalStock > 0
-      },
-      storeAvailability: product.stocks.map(stock => ({
-        store: stock.store,
-        quantity: stock.quantity,
-        status: stock.quantity > 0 ? 'in_stock' : 'out_of_stock'
-      }))
-    };
   });
+
+  if (!product) {
+    return null;
+  }
+
+  // Calculate availability metrics
+  const totalStock = product.stocks.reduce((sum, stock) => sum + stock.quantity, 0);
+  const availableStores = product.stocks.filter(stock => stock.quantity > 0);
+  const outOfStockStores = product.stocks.filter(stock => stock.quantity === 0);
+
+  return {
+    product: {
+      id: product.id,
+      name: product.name,
+      price: product.price
+    },
+    availability: {
+      totalStock,
+      totalStores: product.stocks.length,
+      availableInStores: availableStores.length,
+      outOfStockInStores: outOfStockStores.length,
+      isAvailable: totalStock > 0
+    },
+    storeAvailability: product.stocks.map(stock => ({
+      store: stock.store,
+      quantity: stock.quantity,
+      status: stock.quantity > 0 ? 'in_stock' : 'out_of_stock'
+    }))
+  };
 }
 
 /**
@@ -453,35 +419,33 @@ export async function search(criteria) {
     });
   }
 
-  return recordDatabaseOperation('search_products', async () => {
-    const total = await prisma.product.count({ where });
-    
-    const products = await prisma.product.findMany({
-      where,
-      skip: offset,
-      take: limit,
-      include: {
-        stocks: {
-          include: {
-            store: { select: { id: true, name: true } }
-          }
+  const total = await prisma.product.count({ where });
+  
+  const products = await prisma.product.findMany({
+    where,
+    skip: offset,
+    take: limit,
+    include: {
+      stocks: {
+        include: {
+          store: { select: { id: true, name: true } }
         }
-      },
-      orderBy: [
-        { name: 'asc' }
-      ]
-    });
-
-    return {
-      products,
-      pagination: {
-        page,
-        size: limit,
-        total,
-        pages: Math.ceil(total / limit)
       }
-    };
+    },
+    orderBy: [
+      { name: 'asc' }
+    ]
   });
+
+  return {
+    products,
+    pagination: {
+      page,
+      size: limit,
+      total,
+      pages: Math.ceil(total / limit)
+    }
+  };
 }
 
 /**

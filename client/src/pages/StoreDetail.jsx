@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { apiFetch, API_ENDPOINTS } from "../api";
 import { 
   Box, 
   Paper, 
@@ -57,21 +58,15 @@ function StoreDetail() {
     const fetchStoreData = async () => {
       try {
         // Fetch store details
-        const storeRes = await fetch(`http://localhost:3000/api/v1/stores/${storeId}`);
-        if (!storeRes.ok) throw new Error('Failed to load store details');
-        const storeData = await storeRes.json();
+        const storeData = await apiFetch(API_ENDPOINTS.STORES.BY_ID(storeId));
         setStore(storeData);
         
         // Fetch store stock
-        const stockRes = await fetch(`http://localhost:3000/api/v1/stores/${storeId}/stock`);
-        if (!stockRes.ok) throw new Error('Failed to load stock data');
-        const stockData = await stockRes.json();
+        const stockData = await apiFetch(API_ENDPOINTS.STOCK.BY_STORE(storeId));
         setStocks(stockData);
         
         // Fetch recent sales (limit to 10)
-        const salesRes = await fetch(`http://localhost:3000/api/v1/sales/store/${storeId}?limit=10`);
-        if (!salesRes.ok) throw new Error('Failed to load sales data');
-        const salesData = await salesRes.json();
+        const salesData = await apiFetch(`${API_ENDPOINTS.SALES.BASE}/store/${storeId}?limit=10`);
         setSales(salesData);
         
         setLoading(false);

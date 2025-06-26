@@ -20,7 +20,7 @@
  */
 
 import * as service from '../services/product.service.js';
-import { recordError, updateCatalogSize } from '../middleware/metrics.js';
+import { recordError } from '../middleware/metrics.js';
 import { invalidateCache } from '../utils/cacheInvalidation.js';
 
 /**
@@ -148,9 +148,6 @@ export async function create(req, res, next) {
     // Invalidate relevant caches
     await invalidateCache(['products', 'product-catalog']);
     
-    // Update catalog size metric
-    await updateCatalogSize(service.getPrismaClient());
-    
     // Return created product with 201 status
     res.status(201).json({
       success: true,
@@ -235,9 +232,6 @@ export async function remove(req, res, next) {
     
     // Invalidate relevant caches
     await invalidateCache(['products', 'product-catalog', `product-${productId}`]);
-    
-    // Update catalog size metric
-    await updateCatalogSize(service.getPrismaClient());
     
     // Return success with 204 No Content
     res.status(204).send();

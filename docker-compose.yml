@@ -1,113 +1,269 @@
+# Docker Compose for Microservices Architecture 
+# This docker-compose file defines all the microservices for the LOG430 project
+
 services:
-  db:
-    image: postgres:15
-    restart: always
-    container_name: log430-db
+  # Shared Database
+  postgres:
+    image: postgres:15-alpine
     environment:
+      POSTGRES_DB: log430_store
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: magasin_db
+      POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+  # Shared Redis Cache
   redis:
     image: redis:7-alpine
-    container_name: log430-redis
     ports:
       - "6379:6379"
     volumes:
-      - redis-data:/data
-    restart: always
-    command: redis-server --appendonly yes
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  server:
-    build: ./server
-    container_name: log430-server
-    ports:
-      - "3000:3000"
+  # Product Service
+  product-service:
+    build:
+      context: .
+      dockerfile: services/product-service/Dockerfile
     environment:
-      NODE_ENV: production
-      DATABASE_URL: "postgresql://postgres:postgres@db:5432/magasin_db"
-      REDIS_HOST: "redis"
-      REDIS_PORT: "6379"
+      - NODE_ENV=development
+      - PORT=3001
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
+      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-secret-key-change-in-production
+    ports:
+      - "3001:3001"
     depends_on:
-      db:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  client1:
-    build: ./client
-    container_name: log430-client1
+  # User Service
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user-service/Dockerfile
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
+      - REDIS_URL=redis://redis:6379
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-secret-key-change-in-production
     ports:
-      - "5173:80"
+      - "3002:3002"
     depends_on:
-      - server
-    restart: unless-stopped
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  client2:
-    build: ./client
-    container_name: log430-client2
+  # Store Service
+  store-service:
+    build:
+      context: .
+      dockerfile: services/store-service/Dockerfile
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-secret-key-change-in-production
     ports:
-      - "5174:80"
+      - "3003:3003"
     depends_on:
-      - server
-    restart: unless-stopped
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3003/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-  client3:
-    build: ./client
-    container_name: log430-client3
+  # Stock Service
+  stock-service:
+    build:
+      context: .
+      dockerfile: services/stock-service/Dockerfile
+    environment:
+      - NODE_ENV=development
+      - PORT=3004
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-secret-key-change-in-production
     ports:
-      - "5175:80"
+      - "3004:3004"
     depends_on:
-      - server
-    restart: unless-stopped
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3004/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
+  # Sales Service
+  sales-service:
+    build:
+      context: .
+      dockerfile: services/sales-service/Dockerfile
+    environment:
+      - NODE_ENV=development
+      - PORT=3005
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-secret-key-change-in-production
+    ports:
+      - "3005:3005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3005/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Refund Service
+  refund-service:
+    build:
+      context: .
+      dockerfile: services/refund-service/Dockerfile
+    environment:
+      - NODE_ENV=development
+      - PORT=3006
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-secret-key-change-in-production
+    ports:
+      - "3006:3006"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3006/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Cart Service
+  cart-service:
+    build:
+      context: .
+      dockerfile: services/cart-service/Dockerfile
+    environment:
+      - NODE_ENV=development
+      - PORT=3007
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=your-secret-key-change-in-production
+    ports:
+      - "3007:3007"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3007/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Prometheus Monitoring
   prometheus:
     image: prom/prometheus:latest
-    container_name: log430-prometheus
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
+      - ./services/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
     restart: unless-stopped
-    depends_on:
-      - server
 
+  # Grafana Dashboards
   grafana:
     image: grafana/grafana:latest
-    container_name: log430-grafana
     ports:
-      - "3001:3000"
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
+      - "3100:3000"
     volumes:
-      - grafana-data:/var/lib/grafana
+      - grafana_data:/var/lib/grafana
+      - ./services/monitoring/grafana:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
     restart: unless-stopped
+
+  # Database migration service
+  db-migrate:
+    build:
+      context: .
+      dockerfile: services/product-service/Dockerfile
+    command: npx prisma migrate deploy --schema=/app/prisma/schema.prisma
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
     depends_on:
-      - prometheus
+      postgres:
+        condition: service_healthy
 
 volumes:
-  db-data:
-  prometheus-data:
-  grafana-data:
-  redis-data:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  default:
+    driver: bridge

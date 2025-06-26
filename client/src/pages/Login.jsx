@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useUser } from "../context/UserContext";
+import { apiFetch, API_ENDPOINTS } from "../api";
 
 function Login() {
   // State for form fields
@@ -21,14 +22,9 @@ function Login() {
 
   // Fetch the list of stores when component mounts
   useEffect(() => {
-    fetch("http://localhost:3000/api/v1/stores")
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then((data) => {
+    const fetchStores = async () => {
+      try {
+        const data = await apiFetch(API_ENDPOINTS.STORES.BASE);
         console.log('Stores data received:', data); // Debug log
         if (Array.isArray(data)) {
           setStores(data);
@@ -36,11 +32,13 @@ function Login() {
           console.error('Stores data is not an array:', data);
           setStores([]);
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error('Error fetching stores:', error);
         setStores([]);
-      });
+      }
+    };
+
+    fetchStores();
   }, []);
 
   /**
@@ -51,7 +49,7 @@ function Login() {
    * 
    * @param {Event} e - Form submit event
    */
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
@@ -63,56 +61,47 @@ function Login() {
       return;
     }
     
-    // Send login request to API
-    fetch("http://localhost:3000/api/v1/users/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: name.trim(),
-        password: password.trim() || "password",
-      }),
-    })
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error("Login failed");
-        }
-        
-        // Get the token from headers
-        const token = res.headers.get('Authorization')?.split(' ')[1];
-        if (!token) {
-          throw new Error("No authentication token received");
-        }
-        
-        return res.json().then(userData => ({ userData, token }));
-      })
-      .then(({ userData, token }) => {
-        // For client role, ensure a store is selected
-        if (userData.role === "client" && !storeId) {
-          setError("As a client, please choose a store!");
-          setLoading(false);
-          return;
-        }
-        
-        // Create user object and update context
-        setUser({
-          id: userData.id,
-          role: userData.role,
-          name: userData.name,
-          token: token,
-          storeId: userData.role === "client" ? parseInt(storeId) : null,
-          storeName:
-            userData.role === "client"
-              ? stores.find((m) => m.id === parseInt(storeId))?.name || ""
-              : "",
-        });
-      })
-      .catch((err) => {
-        console.error(err);
-        setError("Authentication failed. Please check your credentials.");
-        setLoading(false);
+    try {
+      // Send login request to API Gateway
+      const response = await apiFetch(API_ENDPOINTS.AUTH.LOGIN, {
+        method: "POST",
+        body: JSON.stringify({
+          name: name.trim(),
+          password: password.trim() || "password",
+        }),
       });
+
+      // Extract token and user data from response
+      const { token, user: userData } = response;
+      
+      if (!token) {
+        throw new Error("No authentication token received");
+      }
+      
+      // For client role, ensure a store is selected
+      if (userData.role === "client" && !storeId) {
+        setError("As a client, please choose a store!");
+        setLoading(false);
+        return;
+      }
+      
+      // Create user object and update context
+      setUser({
+        id: userData.id,
+        role: userData.role,
+        name: userData.name,
+        token: token,
+        storeId: userData.role === "client" ? parseInt(storeId) : null,
+        storeName:
+          userData.role === "client"
+            ? stores.find((m) => m.id === parseInt(storeId))?.name || ""
+            : "",
+      });
+    } catch (err) {
+      console.error(err);
+      setError("Authentication failed. Please check your credentials.");
+      setLoading(false);
+    }
   };
 
   return (

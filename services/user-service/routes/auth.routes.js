@@ -20,19 +20,14 @@ import {
   generateRefreshToken, 
   verifyToken,
   authenticate 
-} from '../middleware/auth.js';
-import { 
-  recordUserOperation, 
-  recordAuthAttempt, 
-  recordTokenIssued 
-} from '../middleware/metrics.js';
-import { logger } from '../utils/logger.js';
+} from '@log430/shared/middleware/auth.js';
+import { logger } from '@log430/shared/utils/logger.js';
 import { 
   ValidationError, 
   UnauthorizedError, 
   ConflictError,
   asyncHandler 
-} from '../middleware/errorHandler.js';
+} from '@log430/shared/middleware/errorHandler.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -113,15 +108,11 @@ router.post('/login',
       });
       
       if (!user) {
-        recordAuthAttempt('failure', 'password');
-        recordUserOperation('login', 'failure');
         logger.auth(email, false, 'User not found');
         throw new UnauthorizedError('Invalid credentials');
       }
       
       if (!user.isActive) {
-        recordAuthAttempt('failure', 'password');
-        recordUserOperation('login', 'failure');
         logger.auth(email, false, 'Account inactive');
         throw new UnauthorizedError('Account is inactive');
       }
@@ -130,8 +121,6 @@ router.post('/login',
       const isPasswordValid = await bcrypt.compare(password, user.password);
       
       if (!isPasswordValid) {
-        recordAuthAttempt('failure', 'password');
-        recordUserOperation('login', 'failure');
         logger.auth(email, false, 'Invalid password');
         throw new UnauthorizedError('Invalid credentials');
       }
@@ -147,10 +136,6 @@ router.post('/login',
       });
       
       // Record successful authentication
-      recordAuthAttempt('success', 'password');
-      recordUserOperation('login', 'success');
-      recordTokenIssued('access');
-      recordTokenIssued('refresh');
       logger.auth(email, true);
       
       // Return user data and tokens (excluding password)
@@ -170,8 +155,6 @@ router.post('/login',
       });
       
     } catch (error) {
-      recordAuthAttempt('failure', 'password');
-      recordUserOperation('login', 'failure');
       throw error;
     }
   })
@@ -196,7 +179,6 @@ router.post('/register',
       });
       
       if (existingUser) {
-        recordUserOperation('register', 'failure');
         logger.register(email, role, false);
         throw new ConflictError('Email already registered');
       }
@@ -221,9 +203,6 @@ router.post('/register',
       const refreshToken = generateRefreshToken(user);
       
       // Record successful registration
-      recordUserOperation('register', 'success');
-      recordTokenIssued('access');
-      recordTokenIssued('refresh');
       logger.register(email, role, true);
       
       // Return user data and tokens (excluding password)
@@ -243,7 +222,6 @@ router.post('/register',
       });
       
     } catch (error) {
-      recordUserOperation('register', 'failure');
       throw error;
     }
   })
@@ -266,7 +244,6 @@ router.post('/refresh',
       const decoded = verifyToken(refreshToken);
       
       if (decoded.type !== 'refresh') {
-        recordUserOperation('token_refresh', 'failure');
         throw new UnauthorizedError('Invalid token type');
       }
       
@@ -276,16 +253,11 @@ router.post('/refresh',
       });
       
       if (!user || !user.isActive) {
-        recordUserOperation('token_refresh', 'failure');
         throw new UnauthorizedError('User not found or inactive');
       }
       
       // Generate new access token
       const newAccessToken = generateAccessToken(user);
-      
-      // Record successful token refresh
-      recordUserOperation('token_refresh', 'success');
-      recordTokenIssued('access');
       
       logger.info('Token refreshed successfully', { 
         userId: user.id, 
@@ -305,7 +277,6 @@ router.post('/refresh',
       });
       
     } catch (error) {
-      recordUserOperation('token_refresh', 'failure');
       throw error;
     }
   })
@@ -322,8 +293,6 @@ router.post('/logout',
       userId: req.user.id, 
       email: req.user.email 
     });
-    
-    recordUserOperation('logout', 'success');
     
     res.json({
       success: true,
@@ -359,8 +328,6 @@ router.get('/me',
     if (!user) {
       throw new UnauthorizedError('User not found');
     }
-    
-    recordUserOperation('profile_view', 'success');
     
     res.json({
       success: true,

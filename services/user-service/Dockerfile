@@ -1,49 +1,52 @@
-# User Service Dockerfile
-# Multi-stage build for production-ready Node.js microservice
+FROM node:16-alpine
 
-# Build stage
-FROM node:18-alpine AS builder
+# Install dependencies required for Prisma
+RUN apk add --no-cache openssl
 
-# Set working directory
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies (including dev dependencies for build)
-RUN npm ci --only=production && npm cache clean --force
-
-# Production stage
-FROM node:18-alpine AS production
-
-# Create app user for security
+# Create a non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package.json files first to leverage Docker caching
+COPY ./services/shared/package.json ./services/shared/
+COPY ./services/user-service/package.json ./services/user-service/
+COPY ./fix-shared-modules.js .
 
-# Copy node_modules from builder stage
-COPY --from=builder /app/node_modules ./node_modules
+# Run the fix script to create proper export wrappers for shared modules
+RUN node fix-shared-modules.js
 
-# Copy application code
-COPY --chown=nodejs:nodejs . .
+# Install dependencies for shared module first
+WORKDIR /app/services/shared
+RUN npm install
 
-# Remove unnecessary files for production
-RUN rm -rf ./tests/ ./docs/ ./*.md
+# Install dependencies for the user service
+WORKDIR /app/services/user-service
+RUN npm install
 
-# Switch to non-root user
+# Copy the rest of the application code
+COPY ./services/shared /app/services/shared
+COPY ./services/user-service /app/services/user-service
+COPY ./prisma /app/prisma
+
+# Generate Prisma client
+WORKDIR /app
+ENV DATABASE_URL="postgresql://postgres:password@postgres:5432/log430_store" \
+    PRISMA_BINARY_PLATFORM="linux-musl"
+RUN npm install -g prisma@5.14.0 && \
+    npx prisma generate && \
+    mkdir -p /app/services/user-service/node_modules/.prisma && \
+    cp -r /app/node_modules/.prisma/client /app/services/user-service/node_modules/.prisma/
+
+# Set the working directory to the service's folder
+WORKDIR /app/services/user-service
+
+# Switch to the non-root user
 USER nodejs
 
-# Expose port
+# Expose the port for the service
 EXPOSE 3002
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "http.get('http://localhost:3002/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })" || exit 1
-
-# Start the application
-CMD ["node", "server.js"]
+# Start the service
+CMD ["node", "server.js"] 

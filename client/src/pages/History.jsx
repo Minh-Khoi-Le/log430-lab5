@@ -8,6 +8,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useUser } from "../context/UserContext";
+import { authenticatedFetch, API_ENDPOINTS } from "../api";
 import {
   Box,
   Paper,
@@ -118,20 +119,14 @@ const History = () => {
     setRefundLoading(true);
     
     try {
-      const response = await fetch("http://localhost:3000/api/v1/refunds", {
+      await authenticatedFetch(API_ENDPOINTS.REFUNDS.CREATE, user.token, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           saleId: refundingSale.id,
           userId: user.id,
           reason: refundReason || "Client requested refund"
         })
       });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Error while processing refund");
-      }
       
       // Refresh both purchase and refund data
       fetchHistory();
@@ -163,31 +158,25 @@ const History = () => {
     
     try {
       // Fetch purchase history
-      const purchasesResponse = await fetch("http://localhost:3000/api/v1/sales/history", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id })
-      });
-      
-      if (!purchasesResponse.ok) {
-        throw new Error("Error loading history");
-      }
-      
-      const purchasesData = await purchasesResponse.json();
+      const purchasesData = await authenticatedFetch(
+        `${API_ENDPOINTS.SALES.BASE}/history`, 
+        user.token, 
+        {
+          method: "POST",
+          body: JSON.stringify({ userId: user.id })
+        }
+      );
       setPurchases(Array.isArray(purchasesData) ? purchasesData : []);
       
       // Fetch refund history
-      const refundsResponse = await fetch("http://localhost:3000/api/v1/refunds/history", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id })
-      });
-      
-      if (!refundsResponse.ok) {
-        throw new Error("Error loading refunds");
-      }
-      
-      const refundsData = await refundsResponse.json();
+      const refundsData = await authenticatedFetch(
+        `${API_ENDPOINTS.REFUNDS.BASE}/history`, 
+        user.token, 
+        {
+          method: "POST",
+          body: JSON.stringify({ userId: user.id })
+        }
+      );
       setRefunds(Array.isArray(refundsData) ? refundsData : []);
       
     } catch (err) {

@@ -17,7 +17,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { ApiError } from '../middleware/errorHandler.js';
+import { BaseError } from '@log430/shared/middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 import { getRedisClient } from '../utils/redis.js';
 import axios from 'axios';

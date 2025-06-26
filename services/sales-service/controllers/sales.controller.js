@@ -9,574 +9,575 @@
  * - Sales history retrieval and filtering
  * - Sales analytics and reporting
  * - Integration with stock service for inventory updates
- * - Integration with cart service for e-commerce checkouts
- * - Comprehensive metrics and monitoring
+ * - Comprehensive error handling with shared components
+ * - Metrics collection via shared middleware
  * 
  * @author Sales Service Team
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 import SalesService from '../services/sales.service.js';
-import { ApiError } from '../middleware/errorHandler.js';
-import { promClient } from '../middleware/metrics.js';
-import logger from '../utils/logger.js';
 
-// Metrics for sales operations
-const salesOperationCounter = new promClient.Counter({
-  name: 'sales_operations_total',
-  help: 'Total number of sales operations',
-  labelNames: ['operation', 'status', 'store_id']
-});
-
-const salesOperationDuration = new promClient.Histogram({
-  name: 'sales_operation_duration_seconds',
-  help: 'Duration of sales operations in seconds',
-  labelNames: ['operation']
-});
-
-const salesAmountGauge = new promClient.Gauge({
-  name: 'sales_amount_total',
-  help: 'Total sales amount',
-  labelNames: ['store_id', 'time_period']
-});
-
-const salesCountGauge = new promClient.Gauge({
-  name: 'sales_count_total',
-  help: 'Total number of sales',
-  labelNames: ['store_id', 'time_period']
-});
+// Import shared components
+import {
+  ValidationError,
+  NotFoundError,
+  logger,
+  asyncHandler,
+  recordOperation
+} from '@log430/shared';
 
 /**
  * Create Sale Controller
  * 
- * Creates a new sales transaction with comprehensive validation.
- * Handles both physical store and e-commerce transactions.
- * 
- * @param {Request} req - Express request object with sale data
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- * 
- * Body Requirements:
- * - storeId: Store ID (integer)
- * - userId: User/Customer ID (integer, optional if clientName provided)
- * - clientName: Customer name (string, optional if userId provided)
- * - lines: Array of sale line items
- *   - productId: Product ID (integer)
- *   - quantity: Quantity (integer, > 0)
- *   - unitPrice: Unit price (number, > 0)
- * - cart: Alternative to lines (from e-commerce cart)
- * - paymentMethod: Payment method (optional)
- * - notes: Additional notes (optional)
- * 
- * Response: 201 Created with sale details
+ * Handles the creation of new sales transactions with comprehensive validation
  */
-export async function createSale(req, res, next) {
-  const timer = salesOperationDuration.startTimer({ operation: 'create_sale' });
-  
+export const createSale = asyncHandler(async (req, res) => {
+  const { storeId, customerId, items, paymentMethod, totalAmount, discounts } = req.body;
+
+  // Basic input validation
+  if (!storeId || !items || !Array.isArray(items) || items.length === 0) {
+    throw new ValidationError('Store ID and items are required');
+  }
+
+  if (!paymentMethod) {
+    throw new ValidationError('Payment method is required');
+  }
+
+  // Validate items structure
+  for (const item of items) {
+    if (!item.productId || !item.quantity || item.quantity <= 0) {
+      throw new ValidationError('Each item must have a valid productId and positive quantity');
+    }
+  }
+
+  logger.info('Creating new sale', {
+    storeId,
+    customerId,
+    itemCount: items.length,
+    totalAmount,
+    userId: req.user?.id
+  });
+
+  // Record operation for metrics
+  recordOperation('sales_create', 'start');
+
   try {
-    const saleData = req.body;
-    
-    // Basic validation
-    if (!saleData.storeId || isNaN(parseInt(saleData.storeId))) {
-      throw new ApiError(400, 'Valid store ID is required');
-    }
-    
-    if (!saleData.userId && !saleData.clientName) {
-      throw new ApiError(400, 'Either user ID or client name is required');
-    }
-    
-    if (!saleData.lines && !saleData.cart) {
-      throw new ApiError(400, 'Sale lines or cart data is required');
-    }
-    
-    // Convert cart to lines if provided
-    if (saleData.cart && !saleData.lines) {
-      saleData.lines = saleData.cart.map(item => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: item.price || item.unitPrice
-      }));
-    }
-    
-    // Validate lines
-    if (!Array.isArray(saleData.lines) || saleData.lines.length === 0) {
-      throw new ApiError(400, 'At least one sale line is required');
-    }
-    
-    for (const line of saleData.lines) {
-      if (!line.productId || isNaN(parseInt(line.productId))) {
-        throw new ApiError(400, 'Each line must have a valid product ID');
-      }
-      if (!line.quantity || isNaN(parseInt(line.quantity)) || parseInt(line.quantity) <= 0) {
-        throw new ApiError(400, 'Each line must have a valid quantity greater than 0');
-      }
-      if (!line.unitPrice || isNaN(parseFloat(line.unitPrice)) || parseFloat(line.unitPrice) <= 0) {
-        throw new ApiError(400, 'Each line must have a valid unit price greater than 0');
-      }
-    }
-    
     const sale = await SalesService.createSale({
-      ...saleData,
-      userId: req.user?.id || saleData.userId,
-      createdBy: req.user?.id
+      storeId,
+      customerId,
+      items,
+      paymentMethod,
+      totalAmount,
+      discounts,
+      userId: req.user.id
     });
-    
-    // Update metrics
-    salesOperationCounter.inc({ 
-      operation: 'create_sale', 
-      status: 'success', 
-      store_id: saleData.storeId 
-    });
-    
-    salesAmountGauge.inc({ 
-      store_id: saleData.storeId, 
-      time_period: 'daily' 
-    }, sale.total);
-    
-    salesCountGauge.inc({ 
-      store_id: saleData.storeId, 
-      time_period: 'daily' 
-    });
-    
+
+    recordOperation('sales_create', 'success');
+
     logger.info('Sale created successfully', {
       saleId: sale.id,
-      storeId: sale.storeId,
-      userId: sale.userId,
-      total: sale.total,
-      lineCount: sale.lines?.length || 0
+      storeId,
+      totalAmount: sale.totalAmount
     });
-    
+
     res.status(201).json({
       success: true,
-      message: 'Sale created successfully',
-      data: sale
+      data: sale,
+      message: 'Sale created successfully'
     });
   } catch (error) {
-    salesOperationCounter.inc({ 
-      operation: 'create_sale', 
-      status: 'error', 
-      store_id: req.body.storeId || 'unknown'
-    });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('sales_create', 'error');
+    throw error;
   }
-}
+});
 
 /**
- * List Sales Controller
+ * Get All Sales Controller
  * 
- * Retrieves a paginated list of sales with filtering options.
- * Supports various filters for comprehensive sales management.
- * 
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- * 
- * Query Parameters:
- * - page: Page number (default: 1)
- * - limit: Items per page (default: 20, max: 100)
- * - storeId: Filter by store
- * - userId: Filter by user/customer
- * - startDate: Filter by start date (ISO string)
- * - endDate: Filter by end date (ISO string)
- * - minAmount: Filter by minimum amount
- * - maxAmount: Filter by maximum amount
- * - status: Filter by status (pending, completed, refunded)
- * 
- * Response: 200 OK with paginated sales data
+ * Retrieves paginated list of sales with filtering options
  */
-export async function listSales(req, res, next) {
-  const timer = salesOperationDuration.startTimer({ operation: 'list_sales' });
-  
-  try {
-    const {
-      page = 1,
-      limit = 20,
-      storeId,
-      userId,
-      startDate,
-      endDate,
-      minAmount,
-      maxAmount,
-      status
-    } = req.query;
-    
-    const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
-    
-    const filters = {};
-    if (storeId && !isNaN(parseInt(storeId))) {
-      filters.storeId = parseInt(storeId);
-    }
-    if (userId && !isNaN(parseInt(userId))) {
-      filters.userId = parseInt(userId);
-    }
-    if (startDate) {
-      filters.startDate = new Date(startDate);
-    }
-    if (endDate) {
-      filters.endDate = new Date(endDate);
-    }
-    if (minAmount && !isNaN(parseFloat(minAmount))) {
-      filters.minAmount = parseFloat(minAmount);
-    }
-    if (maxAmount && !isNaN(parseFloat(maxAmount))) {
-      filters.maxAmount = parseFloat(maxAmount);
-    }
-    if (status) {
-      filters.status = status;
-    }
-    
-    const result = await SalesService.getSales({
+export const getAllSales = asyncHandler(async (req, res) => {
+  const {
+    page = 1,
+    limit = 20,
+    storeId,
+    customerId,
+    status,
+    startDate,
+    endDate,
+    sortBy = 'createdAt',
+    sortOrder = 'desc'
+  } = req.query;
+
+  // Validate pagination parameters
+  const pageNum = parseInt(page);
+  const limitNum = parseInt(limit);
+
+  if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+    throw new ValidationError('Invalid pagination parameters');
+  }
+
+  logger.info('Fetching sales list', {
+    page: pageNum,
+    limit: limitNum,
+    filters: { storeId, customerId, status, startDate, endDate },
+    userId: req.user?.id
+  });
+
+  const filters = {
+    storeId: storeId ? parseInt(storeId) : undefined,
+    customerId: customerId ? parseInt(customerId) : undefined,
+    status,
+    startDate,
+    endDate
+  };
+
+  const result = await SalesService.getAllSales({
+    page: pageNum,
+    limit: limitNum,
+    filters,
+    sortBy,
+    sortOrder
+  });
+
+  res.json({
+    success: true,
+    data: result.sales,
+    pagination: {
       page: pageNum,
       limit: limitNum,
-      filters
-    });
-    
-    salesOperationCounter.inc({ 
-      operation: 'list_sales', 
-      status: 'success'
-    });
-    
-    res.json({
-      success: true,
-      data: result.sales,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total: result.total,
-        totalPages: Math.ceil(result.total / limitNum),
-        hasNext: pageNum < Math.ceil(result.total / limitNum),
-        hasPrev: pageNum > 1
-      },
-      meta: {
-        filters,
-        totalAmount: result.totalAmount,
-        averageAmount: result.averageAmount
-      }
-    });
-  } catch (error) {
-    salesOperationCounter.inc({ 
-      operation: 'list_sales', 
-      status: 'error'
-    });
-    next(error);
-  } finally {
-    timer();
-  }
-}
+      total: result.total,
+      pages: Math.ceil(result.total / limitNum)
+    }
+  });
+});
 
 /**
  * Get Sale by ID Controller
  * 
- * Retrieves detailed information about a specific sale.
- * Includes all line items and related data.
- * 
- * @param {Request} req - Express request object with sale ID
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Retrieves a specific sale by its ID
  */
-export async function getSaleById(req, res, next) {
-  const timer = salesOperationDuration.startTimer({ operation: 'get_sale' });
-  
-  try {
-    const { id } = req.params;
-    
-    if (!id || isNaN(parseInt(id))) {
-      throw new ApiError(400, 'Valid sale ID is required');
-    }
-    
-    const sale = await SalesService.getSaleById(parseInt(id));
-    
-    if (!sale) {
-      salesOperationCounter.inc({ 
-        operation: 'get_sale', 
-        status: 'not_found'
-      });
-      throw new ApiError(404, 'Sale not found');
-    }
-    
-    salesOperationCounter.inc({ 
-      operation: 'get_sale', 
-      status: 'success'
-    });
-    
-    res.json({
-      success: true,
-      data: sale
-    });
-  } catch (error) {
-    salesOperationCounter.inc({ 
-      operation: 'get_sale', 
-      status: 'error'
-    });
-    next(error);
-  } finally {
-    timer();
-  }
-}
+export const getSaleById = asyncHandler(async (req, res) => {
+  const { saleId } = req.params;
+  const saleIdNum = parseInt(saleId);
 
-/**
- * Get Sales by User Controller
- * 
- * Retrieves sales history for a specific user/customer.
- * Useful for customer service and account management.
- * 
- * @param {Request} req - Express request object with user ID
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- */
-export async function getSalesByUser(req, res, next) {
-  const timer = salesOperationDuration.startTimer({ operation: 'get_sales_by_user' });
-  
-  try {
-    const { userId } = req.params;
-    const { page = 1, limit = 10, includeRefunded = false } = req.query;
-    
-    if (!userId || isNaN(parseInt(userId))) {
-      throw new ApiError(400, 'Valid user ID is required');
-    }
-    
-    const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
-    
-    const result = await SalesService.getSalesByUser(parseInt(userId), {
-      page: pageNum,
-      limit: limitNum,
-      includeRefunded: includeRefunded === 'true'
-    });
-    
-    salesOperationCounter.inc({ 
-      operation: 'get_sales_by_user', 
-      status: 'success'
-    });
-    
-    res.json({
-      success: true,
-      data: result.sales,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total: result.total,
-        totalPages: Math.ceil(result.total / limitNum)
-      },
-      meta: {
-        userId: parseInt(userId),
-        totalAmount: result.totalAmount,
-        totalSales: result.total
-      }
-    });
-  } catch (error) {
-    salesOperationCounter.inc({ 
-      operation: 'get_sales_by_user', 
-      status: 'error'
-    });
-    next(error);
-  } finally {
-    timer();
+  if (!saleIdNum || saleIdNum < 1) {
+    throw new ValidationError('Invalid sale ID');
   }
-}
 
-/**
- * Get Sales by Store Controller
- * 
- * Retrieves sales for a specific store with analytics.
- * Useful for store management and performance tracking.
- * 
- * @param {Request} req - Express request object with store ID
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- */
-export async function getSalesByStore(req, res, next) {
-  const timer = salesOperationDuration.startTimer({ operation: 'get_sales_by_store' });
-  
-  try {
-    const { storeId } = req.params;
-    const { 
-      page = 1, 
-      limit = 20, 
-      startDate, 
-      endDate,
-      includeAnalytics = false 
-    } = req.query;
-    
-    if (!storeId || isNaN(parseInt(storeId))) {
-      throw new ApiError(400, 'Valid store ID is required');
-    }
-    
-    const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
-    
-    const filters = {};
-    if (startDate) filters.startDate = new Date(startDate);
-    if (endDate) filters.endDate = new Date(endDate);
-    
-    const result = await SalesService.getSalesByStore(parseInt(storeId), {
-      page: pageNum,
-      limit: limitNum,
-      filters,
-      includeAnalytics: includeAnalytics === 'true'
-    });
-    
-    salesOperationCounter.inc({ 
-      operation: 'get_sales_by_store', 
-      status: 'success', 
-      store_id: storeId 
-    });
-    
-    res.json({
-      success: true,
-      data: result.sales,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total: result.total,
-        totalPages: Math.ceil(result.total / limitNum)
-      },
-      meta: {
-        storeId: parseInt(storeId),
-        ...result.analytics
-      }
-    });
-  } catch (error) {
-    salesOperationCounter.inc({ 
-      operation: 'get_sales_by_store', 
-      status: 'error', 
-      store_id: req.params.storeId 
-    });
-    next(error);
-  } finally {
-    timer();
-  }
-}
+  logger.info('Fetching sale by ID', { saleId: saleIdNum, userId: req.user?.id });
 
-/**
- * Get Sales Analytics Controller
- * 
- * Provides comprehensive sales analytics and reporting.
- * Includes time-based trends, top products, and performance metrics.
- * 
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- */
-export async function getSalesAnalytics(req, res, next) {
-  const timer = salesOperationDuration.startTimer({ operation: 'get_sales_analytics' });
-  
-  try {
-    const {
-      storeId,
-      startDate,
-      endDate,
-      groupBy = 'day', // day, week, month
-      includeProducts = false,
-      includeCustomers = false
-    } = req.query;
-    
-    const filters = {};
-    if (storeId && !isNaN(parseInt(storeId))) {
-      filters.storeId = parseInt(storeId);
-    }
-    if (startDate) filters.startDate = new Date(startDate);
-    if (endDate) filters.endDate = new Date(endDate);
-    
-    const analytics = await SalesService.getSalesAnalytics({
-      filters,
-      groupBy,
-      includeProducts: includeProducts === 'true',
-      includeCustomers: includeCustomers === 'true'
-    });
-    
-    salesOperationCounter.inc({ 
-      operation: 'get_sales_analytics', 
-      status: 'success'
-    });
-    
-    res.json({
-      success: true,
-      data: analytics,
-      meta: {
-        filters,
-        groupBy,
-        generatedAt: new Date().toISOString()
-      }
-    });
-  } catch (error) {
-    salesOperationCounter.inc({ 
-      operation: 'get_sales_analytics', 
-      status: 'error'
-    });
-    next(error);
-  } finally {
-    timer();
+  const sale = await SalesService.getSaleById(saleIdNum);
+
+  if (!sale) {
+    throw new NotFoundError(`Sale with ID ${saleIdNum} not found`);
   }
-}
+
+  res.json({
+    success: true,
+    data: sale
+  });
+});
 
 /**
  * Update Sale Status Controller
  * 
- * Updates the status of a sale (e.g., from pending to completed).
- * Used for order management and workflow control.
- * 
- * @param {Request} req - Express request object
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Updates the status of an existing sale
  */
-export async function updateSaleStatus(req, res, next) {
-  const timer = salesOperationDuration.startTimer({ operation: 'update_sale_status' });
-  
-  try {
-    const { id } = req.params;
-    const { status, notes } = req.body;
-    
-    if (!id || isNaN(parseInt(id))) {
-      throw new ApiError(400, 'Valid sale ID is required');
-    }
-    
-    if (!status || !['pending', 'completed', 'cancelled', 'refunded'].includes(status)) {
-      throw new ApiError(400, 'Valid status is required (pending, completed, cancelled, refunded)');
-    }
-    
-    const sale = await SalesService.updateSaleStatus(parseInt(id), {
-      status,
-      notes,
-      updatedBy: req.user?.id
-    });
-    
-    salesOperationCounter.inc({ 
-      operation: 'update_sale_status', 
-      status: 'success'
-    });
-    
-    logger.info('Sale status updated', {
-      saleId: sale.id,
-      newStatus: status,
-      updatedBy: req.user?.id
-    });
-    
-    res.json({
-      success: true,
-      message: 'Sale status updated successfully',
-      data: sale
-    });
-  } catch (error) {
-    salesOperationCounter.inc({ 
-      operation: 'update_sale_status', 
-      status: 'error'
-    });
-    next(error);
-  } finally {
-    timer();
+export const updateSaleStatus = asyncHandler(async (req, res) => {
+  const { saleId } = req.params;
+  const { status, reason } = req.body;
+  const saleIdNum = parseInt(saleId);
+
+  if (!saleIdNum || saleIdNum < 1) {
+    throw new ValidationError('Invalid sale ID');
   }
-}
+
+  const validStatuses = ['pending', 'completed', 'cancelled', 'refunded'];
+  if (!status || !validStatuses.includes(status)) {
+    throw new ValidationError('Invalid status. Must be one of: ' + validStatuses.join(', '));
+  }
+
+  logger.info('Updating sale status', {
+    saleId: saleIdNum,
+    status,
+    reason,
+    userId: req.user?.id
+  });
+
+  const updatedSale = await SalesService.updateSaleStatus(saleIdNum, status, reason, req.user.id);
+
+  if (!updatedSale) {
+    throw new NotFoundError(`Sale with ID ${saleIdNum} not found`);
+  }
+
+  logger.info('Sale status updated successfully', {
+    saleId: saleIdNum,
+    newStatus: status
+  });
+
+  res.json({
+    success: true,
+    data: updatedSale,
+    message: 'Sale status updated successfully'
+  });
+});
+
+/**
+ * Cancel Sale Controller
+ * 
+ * Cancels an existing sale and reverts inventory
+ */
+export const cancelSale = asyncHandler(async (req, res) => {
+  const { saleId } = req.params;
+  const { reason } = req.body;
+  const saleIdNum = parseInt(saleId);
+
+  if (!saleIdNum || saleIdNum < 1) {
+    throw new ValidationError('Invalid sale ID');
+  }
+
+  if (!reason || reason.trim().length === 0) {
+    throw new ValidationError('Cancellation reason is required');
+  }
+
+  logger.info('Cancelling sale', {
+    saleId: saleIdNum,
+    reason,
+    userId: req.user?.id
+  });
+
+  const cancelledSale = await SalesService.cancelSale(saleIdNum, reason, req.user.id);
+
+  if (!cancelledSale) {
+    throw new NotFoundError(`Sale with ID ${saleIdNum} not found`);
+  }
+
+  logger.info('Sale cancelled successfully', { saleId: saleIdNum });
+
+  res.json({
+    success: true,
+    data: cancelledSale,
+    message: 'Sale cancelled successfully'
+  });
+});
+
+/**
+ * Get Sales by Store Controller
+ * 
+ * Retrieves sales for a specific store
+ */
+export const getSalesByStore = asyncHandler(async (req, res) => {
+  const { storeId } = req.params;
+  const { page = 1, limit = 20, status, startDate, endDate } = req.query;
+  const storeIdNum = parseInt(storeId);
+
+  if (!storeIdNum || storeIdNum < 1) {
+    throw new ValidationError('Invalid store ID');
+  }
+
+  const pageNum = parseInt(page);
+  const limitNum = parseInt(limit);
+
+  if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+    throw new ValidationError('Invalid pagination parameters');
+  }
+
+  logger.info('Fetching sales by store', {
+    storeId: storeIdNum,
+    page: pageNum,
+    limit: limitNum,
+    userId: req.user?.id
+  });
+
+  const result = await SalesService.getSalesByStore(storeIdNum, {
+    page: pageNum,
+    limit: limitNum,
+    status,
+    startDate,
+    endDate
+  });
+
+  res.json({
+    success: true,
+    data: result.sales,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total: result.total,
+      pages: Math.ceil(result.total / limitNum)
+    }
+  });
+});
+
+/**
+ * Get Sales by Customer Controller
+ * 
+ * Retrieves sales for a specific customer
+ */
+export const getSalesByCustomer = asyncHandler(async (req, res) => {
+  const { customerId } = req.params;
+  const { page = 1, limit = 20, status } = req.query;
+  const customerIdNum = parseInt(customerId);
+
+  if (!customerIdNum || customerIdNum < 1) {
+    throw new ValidationError('Invalid customer ID');
+  }
+
+  const pageNum = parseInt(page);
+  const limitNum = parseInt(limit);
+
+  if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+    throw new ValidationError('Invalid pagination parameters');
+  }
+
+  logger.info('Fetching sales by customer', {
+    customerId: customerIdNum,
+    page: pageNum,
+    limit: limitNum,
+    userId: req.user?.id
+  });
+
+  const result = await SalesService.getSalesByCustomer(customerIdNum, {
+    page: pageNum,
+    limit: limitNum,
+    status
+  });
+
+  res.json({
+    success: true,
+    data: result.sales,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total: result.total,
+      pages: Math.ceil(result.total / limitNum)
+    }
+  });
+});
+
+/**
+ * Get Sales Analytics Controller
+ * 
+ * Provides comprehensive sales analytics and metrics
+ */
+export const getSalesAnalytics = asyncHandler(async (req, res) => {
+  const { storeId, startDate, endDate, groupBy = 'day' } = req.query;
+
+  const validGroupBy = ['hour', 'day', 'week', 'month'];
+  if (!validGroupBy.includes(groupBy)) {
+    throw new ValidationError('Invalid groupBy parameter. Must be one of: ' + validGroupBy.join(', '));
+  }
+
+  logger.info('Fetching sales analytics', {
+    storeId,
+    startDate,
+    endDate,
+    groupBy,
+    userId: req.user?.id
+  });
+
+  const analytics = await SalesService.getSalesAnalytics({
+    storeId: storeId ? parseInt(storeId) : undefined,
+    startDate,
+    endDate,
+    groupBy
+  });
+
+  res.json({
+    success: true,
+    data: analytics
+  });
+});
+
+/**
+ * Get Sales by Date Range Controller
+ * 
+ * Retrieves sales within a specific date range
+ */
+export const getSalesByDateRange = asyncHandler(async (req, res) => {
+  const { startDate, endDate, storeId, page = 1, limit = 20 } = req.query;
+
+  if (!startDate || !endDate) {
+    throw new ValidationError('Start date and end date are required');
+  }
+
+  const pageNum = parseInt(page);
+  const limitNum = parseInt(limit);
+
+  if (pageNum < 1 || limitNum < 1 || limitNum > 100) {
+    throw new ValidationError('Invalid pagination parameters');
+  }
+
+  logger.info('Fetching sales by date range', {
+    startDate,
+    endDate,
+    storeId,
+    page: pageNum,
+    limit: limitNum,
+    userId: req.user?.id
+  });
+
+  const result = await SalesService.getSalesByDateRange({
+    startDate,
+    endDate,
+    storeId: storeId ? parseInt(storeId) : undefined,
+    page: pageNum,
+    limit: limitNum
+  });
+
+  res.json({
+    success: true,
+    data: result.sales,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total: result.total,
+      pages: Math.ceil(result.total / limitNum)
+    }
+  });
+});
+
+/**
+ * Get Sales Trends Controller
+ * 
+ * Provides sales trend analysis over time
+ */
+export const getSalesTrends = asyncHandler(async (req, res) => {
+  const { period = '30d', storeId, metric = 'revenue' } = req.query;
+
+  const validPeriods = ['7d', '30d', '90d', '1y'];
+  const validMetrics = ['revenue', 'count', 'average'];
+
+  if (!validPeriods.includes(period)) {
+    throw new ValidationError('Invalid period. Must be one of: ' + validPeriods.join(', '));
+  }
+
+  if (!validMetrics.includes(metric)) {
+    throw new ValidationError('Invalid metric. Must be one of: ' + validMetrics.join(', '));
+  }
+
+  logger.info('Fetching sales trends', {
+    period,
+    storeId,
+    metric,
+    userId: req.user?.id
+  });
+
+  const trends = await SalesService.getSalesTrends({
+    period,
+    storeId: storeId ? parseInt(storeId) : undefined,
+    metric
+  });
+
+  res.json({
+    success: true,
+    data: trends
+  });
+});
+
+/**
+ * Process Sale Refund Controller
+ * 
+ * Initiates refund process for a sale
+ */
+export const processSaleRefund = asyncHandler(async (req, res) => {
+  const { saleId } = req.params;
+  const { reason, amount, items } = req.body;
+  const saleIdNum = parseInt(saleId);
+
+  if (!saleIdNum || saleIdNum < 1) {
+    throw new ValidationError('Invalid sale ID');
+  }
+
+  if (!reason || reason.trim().length === 0) {
+    throw new ValidationError('Refund reason is required');
+  }
+
+  logger.info('Processing sale refund', {
+    saleId: saleIdNum,
+    amount,
+    reason,
+    userId: req.user?.id
+  });
+
+  const refund = await SalesService.processSaleRefund({
+    saleId: saleIdNum,
+    reason,
+    amount,
+    items,
+    userId: req.user.id
+  });
+
+  logger.info('Sale refund processed successfully', {
+    saleId: saleIdNum,
+    refundId: refund.id
+  });
+
+  res.status(201).json({
+    success: true,
+    data: refund,
+    message: 'Refund processed successfully'
+  });
+});
+
+/**
+ * Get Sale Receipt Controller
+ * 
+ * Generates and retrieves sale receipt
+ */
+export const getSaleReceipt = asyncHandler(async (req, res) => {
+  const { saleId } = req.params;
+  const { format = 'json' } = req.query;
+  const saleIdNum = parseInt(saleId);
+
+  if (!saleIdNum || saleIdNum < 1) {
+    throw new ValidationError('Invalid sale ID');
+  }
+
+  const validFormats = ['json', 'pdf', 'html'];
+  if (!validFormats.includes(format)) {
+    throw new ValidationError('Invalid format. Must be one of: ' + validFormats.join(', '));
+  }
+
+  logger.info('Generating sale receipt', {
+    saleId: saleIdNum,
+    format,
+    userId: req.user?.id
+  });
+
+  const receipt = await SalesService.generateReceipt(saleIdNum, format);
+
+  if (!receipt) {
+    throw new NotFoundError(`Sale with ID ${saleIdNum} not found`);
+  }
+
+  // Set appropriate content type based on format
+  if (format === 'pdf') {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename=receipt-${saleIdNum}.pdf`);
+  } else if (format === 'html') {
+    res.setHeader('Content-Type', 'text/html');
+  }
+
+  res.json({
+    success: true,
+    data: receipt
+  });
+});
 
 export default {
   createSale,
-  listSales,
+  getAllSales,
   getSaleById,
-  getSalesByUser,
+  updateSaleStatus,
+  cancelSale,
   getSalesByStore,
+  getSalesByCustomer,
   getSalesAnalytics,
-  updateSaleStatus
+  getSalesByDateRange,
+  getSalesTrends,
+  processSaleRefund,
+  getSaleReceipt
 };

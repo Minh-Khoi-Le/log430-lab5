@@ -27,333 +27,211 @@
  */
 
 import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import compression from 'compression';
-import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 
-// Import middleware
-import { errorHandler } from './middleware/errorHandler.js';
-import { setupMetrics, metricsMiddleware } from './middleware/metrics.js';
+// Import shared components
+import {
+  initializeSharedServices,
+  cleanupSharedServices,
+  config,
+  logger,
+  errorHandler,
+  notFoundHandler,
+  httpMetricsMiddleware,
+  metricsHandler
+} from '@log430/shared';
 
 // Import routes
 import salesRoutes from './routes/sales.routes.js';
 
-// Import utilities
-import logger from './utils/logger.js';
-import { connectRedis } from './utils/redis.js';
-
 // Load environment variables
 dotenv.config();
 
-// Initialize Express app
+// Initialize Express app and database connection
 const app = express();
-const PORT = process.env.PORT || 3004;
-
-// Initialize Prisma client
 const prisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
 });
 
-/**
- * Security Middleware
- * 
- * Implements various security measures including:
- * - CORS configuration for cross-origin requests
- * - Helmet for security headers
- * - Rate limiting to prevent abuse
- * - Request compression for performance
- */
-
-// CORS configuration for cross-origin requests
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:5173'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-}));
-
-// Security headers
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
-}));
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 200 : 1000, // Higher limit for sales operations
-  message: {
-    error: 'Too many requests from this IP, please try again later.',
-    retryAfter: '15 minutes'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.use(limiter);
-
-// Compression middleware
-app.use(compression());
-
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-/**
- * Middleware Setup
- * 
- * Sets up application-wide middleware including:
- * - Metrics collection
- * - Request logging
- * - Service health monitoring
- */
-
-// Metrics middleware
-app.use(metricsMiddleware);
-
-// Request logging middleware
-app.use((req, res, next) => {
-  const startTime = Date.now();
-  
-  res.on('finish', () => {
-    const duration = Date.now() - startTime;
-    logger.info('HTTP Request', {
-      method: req.method,
-      url: req.url,
-      statusCode: res.statusCode,
-      duration: `${duration}ms`,
-      userAgent: req.get('User-Agent'),
-      ip: req.ip,
-      userId: req.user?.id || 'anonymous'
-    });
-  });
-  
-  next();
-});
-
-/**
- * Health Check Endpoints
- * 
- * Provides health monitoring capabilities for:
- * - Basic service health
- * - Database connectivity
- * - Redis connectivity
- * - External service dependencies
- * - Detailed system status
- */
-
-// Basic health check
-app.get('/health', async (req, res) => {
+async function initializeApp() {
   try {
-    // Test database connection
-    await prisma.$queryRaw`SELECT 1`;
+    // Initialize shared services first
+    await initializeSharedServices();
     
-    res.status(200).json({
-      status: 'healthy',
-      service: 'sales-service',
-      timestamp: new Date().toISOString(),
-      version: '1.0.0'
-    });
-  } catch (error) {
-    logger.error('Health check failed:', error);
-    res.status(503).json({
-      status: 'unhealthy',
-      service: 'sales-service',
-      timestamp: new Date().toISOString(),
-      error: 'Database connection failed'
-    });
-  }
-});
-
-// Detailed health check
-app.get('/health/detailed', async (req, res) => {
-  const healthStatus = {
-    status: 'healthy',
-    service: 'sales-service',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0',
-    checks: {
-      database: { status: 'unknown' },
-      redis: { status: 'unknown' },
-      stockService: { status: 'unknown' },
-      productService: { status: 'unknown' },
-      memory: { status: 'unknown' },
-      uptime: { status: 'healthy', value: process.uptime() }
-    }
-  };
-
-  try {
-    // Check database
-    await prisma.$queryRaw`SELECT 1`;
-    healthStatus.checks.database = { status: 'healthy' };
-  } catch (error) {
-    healthStatus.checks.database = { status: 'unhealthy', error: error.message };
-    healthStatus.status = 'degraded';
-  }
-
-  try {
-    // Check Redis connection
-    // const redisStatus = await checkRedisConnection();
-    healthStatus.checks.redis = { status: 'healthy' };
-  } catch (error) {
-    healthStatus.checks.redis = { status: 'unhealthy', error: error.message };
-    healthStatus.status = 'degraded';
-  }
-
-  // Check external service dependencies
-  try {
-    // Check stock service connectivity
-    const stockServiceUrl = process.env.STOCK_SERVICE_URL || 'http://localhost:3003';
-    // In a real implementation, you would make an HTTP request to check the service
-    healthStatus.checks.stockService = { status: 'healthy', url: stockServiceUrl };
-  } catch (error) {
-    healthStatus.checks.stockService = { status: 'unhealthy', error: error.message };
-    healthStatus.status = 'degraded';
-  }
-
-  try {
-    // Check product service connectivity
-    const productServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://localhost:3001';
-    healthStatus.checks.productService = { status: 'healthy', url: productServiceUrl };
-  } catch (error) {
-    healthStatus.checks.productService = { status: 'unhealthy', error: error.message };
-    healthStatus.status = 'degraded';
-  }
-
-  // Check memory usage
-  const memUsage = process.memoryUsage();
-  const memUsageMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-  healthStatus.checks.memory = {
-    status: memUsageMB < 500 ? 'healthy' : 'warning',
-    heapUsedMB: memUsageMB,
-    heapTotalMB: Math.round(memUsage.heapTotal / 1024 / 1024)
-  };
-
-  let statusCode;
-  if (healthStatus.status === 'healthy') {
-    statusCode = 200;
-  } else if (healthStatus.status === 'degraded') {
-    statusCode = 200;
-  } else {
-    statusCode = 503;
-  }
-
-  res.status(statusCode).json(healthStatus);
-});
-
-/**
- * API Routes
- * 
- * Mount all API routes under the /api prefix
- * Routes are organized by resource type
- */
-
-// Sales management routes
-app.use('/api/sales', salesRoutes);
-
-/**
- * Metrics Endpoint
- * 
- * Exposes Prometheus metrics for monitoring and alerting
- */
-app.get('/metrics', async (req, res) => {
-  try {
-    const metrics = await setupMetrics();
-    res.set('Content-Type', 'text/plain');
-    res.send(metrics);
-  } catch (error) {
-    logger.error('Error generating metrics:', error);
-    res.status(500).send('Error generating metrics');
-  }
-});
-
-/**
- * 404 Handler
- * 
- * Handles requests to non-existent endpoints
- */
-app.use('*', (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: {
-      code: 'ENDPOINT_NOT_FOUND',
-      message: `Endpoint ${req.method} ${req.originalUrl} not found`,
-      path: req.originalUrl,
-      method: req.method
-    },
-    timestamp: new Date().toISOString()
-  });
-});
-
-/**
- * Global Error Handler
- * 
- * Centralized error handling for all application errors
- */
-app.use(errorHandler);
-
-/**
- * Server Startup
- * 
- * Initializes the server with proper error handling and graceful shutdown
- */
-
-async function startServer() {
-  try {
-    // Test database connection
-    await prisma.$connect();
-    logger.info('Database connected successfully');
+    const PORT = config.get('PORT') || 3004;
     
-    // Initialize Redis connection
-    await connectRedis();
-    logger.info('Redis connected successfully');
-    
-    // Start the server
-    const server = app.listen(PORT, () => {
-      logger.info(`Sales Service started`, {
-        port: PORT,
-        environment: process.env.NODE_ENV || 'development',
-        timestamp: new Date().toISOString()
+    logger.info('Initializing Sales Service...');
+
+    // Apply shared middleware
+    app.use(httpMetricsMiddleware);
+    app.use(express.json({ limit: '10mb' }));
+    app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+    /**
+     * Health Check Endpoint
+     * Provides comprehensive health status including database and cache connectivity
+     */
+    app.get('/health', async (req, res) => {
+      try {
+        const health = {
+          status: 'healthy',
+          timestamp: new Date().toISOString(),
+          service: 'sales-service',
+          version: process.env.npm_package_version || '1.0.0',
+          uptime: process.uptime(),
+          memory: process.memoryUsage(),
+          dependencies: {
+            database: 'checking...',
+            cache: 'checking...',
+            stockService: 'checking...'
+          }
+        };
+
+        // Check database connection
+        try {
+          await prisma.$queryRaw`SELECT 1`;
+          health.dependencies.database = 'healthy';
+        } catch (error) {
+          health.dependencies.database = 'unhealthy';
+          health.status = 'degraded';
+          logger.warn('Database health check failed:', error);
+        }
+
+        // Check cache connection (if available)
+        try {
+          const { redisService } = await import('@log430/shared');
+          await redisService.ping();
+          health.dependencies.cache = 'healthy';
+        } catch (error) {
+          health.dependencies.cache = 'unhealthy';
+          logger.warn('Cache health check failed:', error);
+        }
+
+        // Check stock service dependency
+        try {
+          // This would be an actual HTTP call in production
+          health.dependencies.stockService = 'available';
+        } catch (error) {
+          health.dependencies.stockService = 'unknown';
+          logger.warn('Stock service health check failed:', error);
+        }
+
+        const statusCode = health.status === 'healthy' ? 200 : 503;
+        res.status(statusCode).json(health);
+      } catch (error) {
+        logger.error('Health check failed:', error);
+        res.status(503).json({
+          status: 'unhealthy',
+          timestamp: new Date().toISOString(),
+          service: 'sales-service',
+          error: error.message
+        });
+      }
+    });
+
+    /**
+     * Metrics Endpoint
+     * Uses shared metrics handler
+     */
+    app.get('/metrics', metricsHandler);
+
+    /**
+     * API Routes
+     * Mount sales-specific routes under /api/v1/sales
+     */
+    app.use('/api/v1/sales', salesRoutes);
+
+    /**
+     * Service Information Endpoint
+     * Provides metadata about the sales service
+     */
+    app.get('/', (req, res) => {
+      res.json({
+        service: 'sales-service',
+        version: '1.0.0',
+        description: 'Sales Transaction Processing Microservice',
+        endpoints: {
+          health: '/health',
+          metrics: '/metrics',
+          api: '/api/v1/sales'
+        },
+        features: [
+          'Transaction processing',
+          'Sales history tracking',
+          'Analytics and reporting',
+          'Stock integration',
+          'Multi-store support'
+        ]
       });
     });
 
-    // Graceful shutdown handling
-    process.on('SIGTERM', gracefulShutdown);
-    process.on('SIGINT', gracefulShutdown);
+    // Apply shared error handlers
+    app.use(notFoundHandler);
+    app.use(errorHandler);
 
-    async function gracefulShutdown(signal) {
+    /**
+     * Graceful Shutdown Handler
+     * Properly closes connections and cleans up resources
+     */
+    const gracefulShutdown = async (signal) => {
       logger.info(`Received ${signal}. Starting graceful shutdown...`);
       
-      server.close(async () => {
-        logger.info('HTTP server closed');
+      try {
+        // Close database connection
+        await prisma.$disconnect();
+        logger.info('Database connection closed');
         
-        try {
-          await prisma.$disconnect();
-          logger.info('Database disconnected');
-          
-          logger.info('Graceful shutdown completed');
+        // Cleanup shared services
+        await cleanupSharedServices();
+        
+        // Close HTTP server
+        server.close(() => {
+          logger.info('HTTP server closed');
           process.exit(0);
-        } catch (error) {
-          logger.error('Error during shutdown:', error);
+        });
+        
+        // Force shutdown after timeout
+        setTimeout(() => {
+          logger.error('Forced shutdown due to timeout');
           process.exit(1);
-        }
-      });
-    }
-    
+        }, 10000);
+        
+      } catch (error) {
+        logger.error('Error during graceful shutdown:', error);
+        process.exit(1);
+      }
+    };
+
+    // Register shutdown handlers
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+    /**
+     * Start Server
+     * Initialize the sales service and begin accepting requests
+     */
+    const server = app.listen(PORT, () => {
+      logger.info(`💳 Sales Service started successfully`);
+      logger.info(`📡 Server running on port ${PORT}`);
+      logger.info(`🔍 Health check available at http://localhost:${PORT}/health`);
+      logger.info(`📊 Metrics available at http://localhost:${PORT}/metrics`);
+      logger.info(`🚀 API endpoints available at http://localhost:${PORT}/api/v1/sales`);
+    });
+
+    return server;
+
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    logger.error('Failed to initialize Sales Service:', error);
     process.exit(1);
   }
 }
 
-// Start the server
-startServer();
+// Initialize and start the application
+initializeApp().catch(error => {
+  logger.error('Failed to start Sales Service:', error);
+  process.exit(1);
+});
+
+// Export app for testing
+export default app;

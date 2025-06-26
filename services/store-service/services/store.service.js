@@ -16,7 +16,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { ApiError } from '../middleware/errorHandler.js';
+import { BaseError } from '@log430/shared/middleware/errorHandler.js';
 
 const prisma = new PrismaClient();
 
@@ -78,7 +78,7 @@ class StoreService {
       };
     } catch (error) {
       console.error('Error fetching stores:', error);
-      throw new ApiError(500, 'Failed to fetch stores');
+      throw new BaseError('Failed to fetch stores', 500);
     }
   }
   
@@ -107,7 +107,7 @@ class StoreService {
       return store;
     } catch (error) {
       console.error('Error fetching store by ID:', error);
-      throw new ApiError(500, 'Failed to fetch store');
+      throw new BaseError('Failed to fetch store', 500);
     }
   }
   
@@ -133,7 +133,7 @@ class StoreService {
       });
       
       if (existingStore) {
-        throw new ApiError(409, 'A store with this name already exists in this city');
+        throw new BaseError('A store with this name already exists in this city', 409);
       }
       
       // Create the store
@@ -160,11 +160,11 @@ class StoreService {
       console.log(`New store created: ${store.name} (ID: ${store.id})`);
       return store;
     } catch (error) {
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       console.error('Error creating store:', error);
-      throw new ApiError(500, 'Failed to create store');
+      throw new BaseError('Failed to create store', 500);
     }
   }
   
@@ -197,7 +197,7 @@ class StoreService {
         });
         
         if (duplicateStore) {
-          throw new ApiError(409, 'A store with this name already exists in this city');
+          throw new BaseError('A store with this name already exists in this city', 409);
         }
       }
       
@@ -220,11 +220,11 @@ class StoreService {
       console.log(`Store updated: ${store.name} (ID: ${store.id})`);
       return store;
     } catch (error) {
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       console.error('Error updating store:', error);
-      throw new ApiError(500, 'Failed to update store');
+      throw new BaseError('Failed to update store', 500);
     }
   }
   
@@ -252,7 +252,7 @@ class StoreService {
       ]);
       
       if (salesCount > 0 || stockCount > 0) {
-        throw new ApiError(400, 'Cannot delete store with existing sales or stock records');
+        throw new BaseError('Cannot delete store with existing sales or stock records', 400);
       }
       
       // Delete the store
@@ -263,11 +263,11 @@ class StoreService {
       console.log(`Store deleted: ${existingStore.name} (ID: ${id})`);
       return true;
     } catch (error) {
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       console.error('Error deleting store:', error);
-      throw new ApiError(500, 'Failed to delete store');
+      throw new BaseError('Failed to delete store', 500);
     }
   }
   
@@ -351,7 +351,7 @@ class StoreService {
       };
     } catch (error) {
       console.error('Error fetching store statistics:', error);
-      throw new ApiError(500, 'Failed to fetch store statistics');
+      throw new BaseError('Failed to fetch store statistics', 500);
     }
   }
   

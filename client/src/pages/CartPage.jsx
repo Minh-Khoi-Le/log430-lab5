@@ -9,6 +9,7 @@
 import React, { useState } from "react";
 import { useCart } from "../context/CartContext";
 import { useUser } from "../context/UserContext";
+import { authenticatedFetch, API_ENDPOINTS } from "../api";
 import Modal from "../components/Modal";
 
 const CartPage = () => {
@@ -32,10 +33,9 @@ const CartPage = () => {
     setErrorMsg("");
     setLoading(true);
     try {
-      // Send cart data to backend API
-      const res = await fetch("http://localhost:3000/api/v1/sales", {
+      // Send cart data to backend API via API Gateway
+      const data = await authenticatedFetch(API_ENDPOINTS.SALES.CREATE, user.token, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientName: user.name,
           storeId: user.storeId, 
@@ -46,7 +46,7 @@ const CartPage = () => {
           }))
         })
       });
-      const data = await res.json();
+      
       setLoading(false);
 
       // Handle API response
@@ -66,7 +66,7 @@ const CartPage = () => {
       }
     } catch (err) {
       console.error("Error confirming purchase:", err);
-      setErrorMsg("Network or server error.");
+      setErrorMsg(err.message || "Network or server error.");
       setLoading(false);
     }
   };

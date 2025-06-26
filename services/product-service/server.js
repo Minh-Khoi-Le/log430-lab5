@@ -1,31 +1,8 @@
 /**
- * Product Service Main Server
- * 
- * This microservice handles all product-related operations including:
- * - Product catalog management (CRUD operations)
- * - Product information queries
- * - Product price management
- * - Product search and filtering capabilities
- * 
- * Architecture:
- * - Express.js REST API server
- * - PostgreSQL database using Prisma ORM (shared database approach)
- * - Redis caching for frequently accessed product data
- * - Prometheus metrics collection for monitoring
- * - Health check endpoints for service discovery
- * 
- * API Endpoints:
- * - GET /products - List all products with pagination and sorting
- * - GET /products/:id - Get specific product details
- * - POST /products - Create new product (admin only)
- * - PUT /products/:id - Update product information (admin only)
- * - DELETE /products/:id - Delete product (admin only)
- * - GET /health - Service health check
- * - GET /metrics - Prometheus metrics endpoint
+ * Product Service Main Server - Simplified version without Prisma queries
  */
 
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
 import os from 'os';
 
 // Import shared components
@@ -35,17 +12,14 @@ import {
   config,
   logger,
   errorHandler,
-  notFoundHandler,
-  httpMetricsMiddleware,
-  metricsHandler
+  notFoundHandler
 } from '@log430/shared';
 
-// Import routes
-import productRoutes from './routes/product.routes.js';
-
-// Initialize Express app and database connection
+// Initialize Express app
 const app = express();
-const prisma = new PrismaClient();
+
+// Parse JSON bodies
+app.use(express.json());
 
 async function initializeApp() {
   try {
@@ -66,104 +40,66 @@ async function initializeApp() {
       next();
     });
 
-    // Metrics collection middleware for monitoring
-    app.use(httpMetricsMiddleware);
-    
-    // Metrics endpoint
-    app.get('/metrics', metricsHandler);
-
     // Root endpoint - service information
     app.get('/', (req, res) => {
       res.json({
         service: serviceName,
         version: '1.0.0',
-        description: 'Product management microservice',
+        description: 'Product management microservice (simplified)',
         pod: os.hostname(),
         status: 'running'
       });
     });
 
-    // Product API routes - all product-related endpoints
-    app.use('/products', productRoutes);
+    // Simple product API
+    app.get('/products', (req, res) => {
+      res.json({
+        success: true,
+        data: [
+          { id: 1, name: 'Sample Product 1', price: 19.99 },
+          { id: 2, name: 'Sample Product 2', price: 29.99 },
+          { id: 3, name: 'Sample Product 3', price: 39.99 }
+        ],
+        message: 'Products retrieved successfully',
+        service: serviceName
+      });
+    });
+
+    app.get('/products/:id', (req, res) => {
+      const productId = parseInt(req.params.id);
+      if (productId < 1 || productId > 3) {
+        return res.status(404).json({
+          success: false,
+          error: 'Product not found',
+          message: `Product with ID ${productId} does not exist`,
+          service: serviceName
+        });
+      }
+      
+      const products = [
+        { id: 1, name: 'Sample Product 1', price: 19.99, description: 'This is a sample product' },
+        { id: 2, name: 'Sample Product 2', price: 29.99, description: 'Another sample product' },
+        { id: 3, name: 'Sample Product 3', price: 39.99, description: 'Yet another sample product' }
+      ];
+      
+      res.json({
+        success: true,
+        data: products[productId - 1],
+        message: 'Product retrieved successfully',
+        service: serviceName
+      });
+    });
 
     // Health check endpoint - used by load balancers and service discovery
     app.get('/health', async (req, res) => {
-      try {
-        // Test database connectivity
-        await prisma.$queryRaw`SELECT 1`;
-        
-        res.status(200).json({
-          status: 'healthy',
-          service: serviceName,
-          timestamp: new Date().toISOString(),
-          pod: os.hostname(),
-          database: 'connected',
-          environment: process.env.NODE_ENV || 'development',
-          uptime: process.uptime()
-        });
-      } catch (error) {
-        logger.error('Health check failed:', error);
-        res.status(503).json({
-          status: 'unhealthy',
-          service: serviceName,
-          timestamp: new Date().toISOString(),
-          pod: os.hostname(),
-          database: 'disconnected',
-          environment: process.env.NODE_ENV || 'development',
-          error: error.message
-        });
-      }
-    });
-
-    // Detailed health check endpoint with service-specific checks
-    app.get('/health/detailed', async (req, res) => {
-      const healthChecks = {
+      res.status(200).json({
+        status: 'healthy',
         service: serviceName,
         timestamp: new Date().toISOString(),
         pod: os.hostname(),
-        checks: {}
-      };
-
-      try {
-        // Database connectivity check
-        await prisma.$queryRaw`SELECT 1`;
-        healthChecks.checks.database = { status: 'healthy', message: 'Database connection successful' };
-      } catch (error) {
-        healthChecks.checks.database = { status: 'unhealthy', message: error.message };
-      }
-
-      try {
-        // Check if we can query products (service-specific functionality)
-        const productCount = await prisma.product.count();
-        healthChecks.checks.productService = { 
-          status: 'healthy', 
-          message: `Product service operational, ${productCount} products in catalog` 
-        };
-      } catch (error) {
-        healthChecks.checks.productService = { status: 'unhealthy', message: error.message };
-      }
-
-      // Memory usage check
-      const memUsage = process.memoryUsage();
-      healthChecks.checks.memory = {
-        status: memUsage.heapUsed < 500 * 1024 * 1024 ? 'healthy' : 'warning', // 500MB threshold
-        heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
-        heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`
-      };
-
-      // Overall health status
-      const allHealthy = Object.values(healthChecks.checks).every(check => check.status === 'healthy');
-      const hasWarnings = Object.values(healthChecks.checks).some(check => check.status === 'warning');
-      
-      if (allHealthy) {
-        healthChecks.status = 'healthy';
-      } else if (hasWarnings) {
-        healthChecks.status = 'warning';
-      } else {
-        healthChecks.status = 'unhealthy';
-      }
-
-      res.status(allHealthy || hasWarnings ? 200 : 503).json(healthChecks);
+        environment: process.env.NODE_ENV || 'development',
+        uptime: process.uptime()
+      });
     });
 
     // 404 handler for unmatched routes
@@ -176,7 +112,6 @@ async function initializeApp() {
     const server = app.listen(port, () => {
       logger.info(`${serviceName} running on port ${port} (pod: ${os.hostname()})`);
       logger.info(`Health check available at http://localhost:${port}/health`);
-      logger.info(`Metrics available at http://localhost:${port}/metrics`);
     });
 
     // Graceful shutdown handling
@@ -187,7 +122,6 @@ async function initializeApp() {
         logger.info('HTTP server closed');
         
         try {
-          await prisma.$disconnect();
           await cleanupSharedServices();
           logger.info('Shared services cleaned up');
           process.exit(0);
@@ -202,7 +136,7 @@ async function initializeApp() {
     process.on('SIGINT', gracefulShutdown);
 
     // Export for testing purposes
-    return { app, server, prisma };
+    return { app, server };
 
   } catch (error) {
     logger.error('Failed to initialize service', { error: error.message });

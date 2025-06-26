@@ -14,77 +14,60 @@
  * - Cart expiration and cleanup
  * 
  * @author Cart Service Team
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 import CartService from '../services/cart.service.js';
-import { promClient } from '../middleware/metrics.js';
-import logger from '../utils/logger.js';
 
-// Metrics for cart operations
-const cartOperationCounter = new promClient.Counter({
-  name: 'cart_operations_total',
-  help: 'Total number of cart operations',
-  labelNames: ['operation', 'status', 'store_id']
-});
-
-const cartOperationDuration = new promClient.Histogram({
-  name: 'cart_operation_duration_seconds',
-  help: 'Duration of cart operations in seconds',
-  labelNames: ['operation']
-});
-
-const activeCartsGauge = new promClient.Gauge({
-  name: 'active_carts_total',
-  help: 'Total number of active carts',
-  labelNames: ['store_id']
-});
-
-const cartValueGauge = new promClient.Gauge({
-  name: 'cart_value_total',
-  help: 'Total value of all active carts',
-  labelNames: ['store_id']
-});
+// Import shared components
+import {
+  ValidationError,
+  NotFoundError,
+  logger,
+  asyncHandler,
+  recordOperation
+} from '@log430/shared';
 
 /**
  * Create Cart Controller
  * 
  * Creates a new shopping cart for a customer
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
  */
-export const createCart = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'create_cart' });
-  
-  try {
-    logger.info('Creating new cart', {
-      storeId: req.body.storeId,
-      customerId: req.body.customerId,
-      userId: req.user?.id,
-      userAgent: req.get('User-Agent'),
-      ip: req.ip
-    });
+export const createCart = asyncHandler(async (req, res) => {
+  const { storeId, customerId, sessionId, currency, expiresAt } = req.body;
 
+  // Basic input validation
+  if (!storeId) {
+    throw new ValidationError('Store ID is required');
+  }
+
+  if (!customerId && !sessionId) {
+    throw new ValidationError('Either customer ID or session ID is required');
+  }
+
+  logger.info('Creating new cart', {
+    storeId,
+    customerId,
+    sessionId,
+    userId: req.user?.id,
+    ip: req.ip
+  });
+
+  recordOperation('cart_create', 'start');
+
+  try {
     const cartData = {
-      storeId: req.body.storeId,
-      customerId: req.body.customerId,
-      sessionId: req.body.sessionId,
-      currency: req.body.currency || 'CAD',
-      expiresAt: req.body.expiresAt
+      storeId,
+      customerId,
+      sessionId,
+      currency: currency || 'CAD',
+      expiresAt,
+      userId: req.user?.id
     };
 
     const cart = await CartService.createCart(cartData, req.user);
 
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'create_cart',
-      status: 'success',
-      store_id: cart.storeId
-    });
-
-    activeCartsGauge.inc({ store_id: cart.storeId });
+    recordOperation('cart_create', 'success');
 
     logger.info('Cart created successfully', {
       cartId: cart.id,
@@ -96,945 +79,621 @@ export const createCart = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: 'Cart created successfully',
-      data: cart,
-      timestamp: new Date().toISOString()
+      data: cart
     });
-
   } catch (error) {
-    logger.error('Error creating cart', {
-      error: error.message,
-      stack: error.stack,
-      storeId: req.body.storeId,
-      userId: req.user?.id,
-      ip: req.ip
-    });
-
-    cartOperationCounter.inc({
-      operation: 'create_cart',
-      status: 'error',
-      store_id: req.body.storeId || 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_create', 'error');
+    throw error;
   }
-};
+});
 
 /**
  * Get Cart Controller
  * 
- * Retrieves a user's cart with all items and details
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Retrieves a cart by ID
  */
-export const getCart = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'get_cart' });
-  
+export const getCart = asyncHandler(async (req, res) => {
+  const { cartId } = req.params;
+
+  if (!cartId) {
+    throw new ValidationError('Cart ID is required');
+  }
+
+  logger.info('Retrieving cart', {
+    cartId,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_get', 'start');
+
   try {
-    const { userId } = req.params;
-    const { storeId } = req.query;
-
-    logger.info('Retrieving cart for user', {
-      userId,
-      storeId,
-      userAgent: req.get('User-Agent'),
-      ip: req.ip
-    });
-
-    const cart = await CartService.getUserCart(userId, storeId);
+    const cart = await CartService.getCart(cartId, req.user);
 
     if (!cart) {
-      return res.status(404).json({
-        success: false,
-        message: 'Cart not found',
-        error: 'CART_NOT_FOUND',
-        timestamp: new Date().toISOString()
-      });
+      throw new NotFoundError('Cart not found');
     }
 
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'get_cart',
-      status: 'success',
-      store_id: cart.storeId || 'unknown'
-    });
+    recordOperation('cart_get', 'success');
 
     logger.info('Cart retrieved successfully', {
       cartId: cart.id,
-      userId,
-      storeId: cart.storeId,
-      itemCount: cart.items?.length || 0,
-      totalValue: cart.totalAmount,
-      userAgent: req.get('User-Agent')
+      itemCount: cart.items?.length || 0
     });
 
     res.json({
       success: true,
-      message: 'Cart retrieved successfully',
-      data: cart,
-      timestamp: new Date().toISOString()
+      data: cart
     });
-
   } catch (error) {
-    logger.error('Error retrieving cart', {
-      error: error.message,
-      stack: error.stack,
-      userId: req.params.userId,
-      storeId: req.query.storeId,
-      ip: req.ip
-    });
-
-    cartOperationCounter.inc({
-      operation: 'get_cart',
-      status: 'error',
-      store_id: req.query.storeId || 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_get', 'error');
+    throw error;
   }
-};
+});
 
 /**
  * Add Item to Cart Controller
  * 
- * Adds an item to the shopping cart
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Adds an item to a shopping cart
  */
-export const addItemToCart = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'add_item' });
-  
+export const addItemToCart = asyncHandler(async (req, res) => {
+  const { cartId } = req.params;
+  const { productId, quantity, price, metadata } = req.body;
+
+  // Input validation
+  if (!cartId) {
+    throw new ValidationError('Cart ID is required');
+  }
+
+  if (!productId || !quantity || quantity <= 0) {
+    throw new ValidationError('Product ID and positive quantity are required');
+  }
+
+  logger.info('Adding item to cart', {
+    cartId,
+    productId,
+    quantity,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_add_item', 'start');
+
   try {
-    const cartId = req.params.cartId;
     const itemData = {
-      productId: req.body.productId,
-      quantity: req.body.quantity,
-      customizations: req.body.customizations || []
+      productId,
+      quantity,
+      price,
+      metadata
     };
 
-    logger.info('Adding item to cart', {
-      cartId,
-      productId: itemData.productId,
-      quantity: itemData.quantity,
-      userId: req.user?.id
-    });
+    const cart = await CartService.addItemToCart(cartId, itemData, req.user);
 
-    const cart = await CartService.addItem(cartId, itemData);
-
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'add_item',
-      status: 'success',
-      store_id: cart.storeId
-    });
-
-    cartValueGauge.set({ store_id: cart.storeId }, cart.totalAmount);
+    recordOperation('cart_add_item', 'success');
 
     logger.info('Item added to cart successfully', {
       cartId,
-      productId: itemData.productId,
-      quantity: itemData.quantity,
-      newTotal: cart.totalAmount,
-      userId: req.user?.id
+      productId,
+      quantity,
+      totalItems: cart.items?.length || 0
     });
 
     res.json({
       success: true,
       message: 'Item added to cart successfully',
-      data: cart,
-      timestamp: new Date().toISOString()
+      data: cart
     });
-
   } catch (error) {
-    logger.error('Error adding item to cart', {
-      error: error.message,
-      cartId: req.params.cartId,
-      productId: req.body.productId,
-      userId: req.user?.id
-    });
-
-    cartOperationCounter.inc({
-      operation: 'add_item',
-      status: 'error',
-      store_id: 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_add_item', 'error');
+    throw error;
   }
-};
+});
 
 /**
- * Update Item in Cart Controller
+ * Update Cart Item Controller
  * 
- * Updates the quantity of an item in the cart
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Updates an item in the cart
  */
-export const updateCartItem = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'update_item' });
-  
+export const updateCartItem = asyncHandler(async (req, res) => {
+  const { cartId, itemId } = req.params;
+  const { quantity, price, metadata } = req.body;
+
+  // Input validation
+  if (!cartId || !itemId) {
+    throw new ValidationError('Cart ID and item ID are required');
+  }
+
+  if (quantity !== undefined && quantity <= 0) {
+    throw new ValidationError('Quantity must be positive');
+  }
+
+  logger.info('Updating cart item', {
+    cartId,
+    itemId,
+    quantity,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_update_item', 'start');
+
   try {
-    const cartId = req.params.cartId;
-    const productId = parseInt(req.params.productId);
-    const { quantity } = req.body;
+    const updateData = { quantity, price, metadata };
+    const cart = await CartService.updateCartItem(cartId, itemId, updateData, req.user);
 
-    logger.info('Updating cart item', {
-      cartId,
-      productId,
-      quantity,
-      userId: req.user?.id
-    });
-
-    const cart = await CartService.updateItem(cartId, productId, quantity);
-
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'update_item',
-      status: 'success',
-      store_id: cart.storeId
-    });
-
-    cartValueGauge.set({ store_id: cart.storeId }, cart.totalAmount);
+    recordOperation('cart_update_item', 'success');
 
     logger.info('Cart item updated successfully', {
       cartId,
-      productId,
-      quantity,
-      newTotal: cart.totalAmount,
-      userId: req.user?.id
+      itemId,
+      quantity
     });
 
     res.json({
       success: true,
       message: 'Cart item updated successfully',
-      data: cart,
-      timestamp: new Date().toISOString()
+      data: cart
     });
-
   } catch (error) {
-    logger.error('Error updating cart item', {
-      error: error.message,
-      cartId: req.params.cartId,
-      productId: req.params.productId,
-      userId: req.user?.id
-    });
-
-    cartOperationCounter.inc({
-      operation: 'update_item',
-      status: 'error',
-      store_id: 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_update_item', 'error');
+    throw error;
   }
-};
+});
 
 /**
  * Remove Item from Cart Controller
  * 
- * Removes an item from the shopping cart
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Removes an item from the cart
  */
-export const removeItemFromCart = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'remove_item' });
-  
+export const removeItemFromCart = asyncHandler(async (req, res) => {
+  const { cartId, itemId } = req.params;
+
+  // Input validation
+  if (!cartId || !itemId) {
+    throw new ValidationError('Cart ID and item ID are required');
+  }
+
+  logger.info('Removing item from cart', {
+    cartId,
+    itemId,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_remove_item', 'start');
+
   try {
-    const cartId = req.params.cartId;
-    const productId = parseInt(req.params.productId);
+    const cart = await CartService.removeItemFromCart(cartId, itemId, req.user);
 
-    logger.info('Removing item from cart', {
-      cartId,
-      productId,
-      userId: req.user?.id
-    });
-
-    const cart = await CartService.removeItem(cartId, productId);
-
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'remove_item',
-      status: 'success',
-      store_id: cart.storeId
-    });
-
-    cartValueGauge.set({ store_id: cart.storeId }, cart.totalAmount);
+    recordOperation('cart_remove_item', 'success');
 
     logger.info('Item removed from cart successfully', {
       cartId,
-      productId,
-      newTotal: cart.totalAmount,
-      userId: req.user?.id
+      itemId,
+      remainingItems: cart.items?.length || 0
     });
 
     res.json({
       success: true,
       message: 'Item removed from cart successfully',
-      data: cart,
-      timestamp: new Date().toISOString()
+      data: cart
     });
-
   } catch (error) {
-    logger.error('Error removing item from cart', {
-      error: error.message,
-      cartId: req.params.cartId,
-      productId: req.params.productId,
-      userId: req.user?.id
-    });
-
-    cartOperationCounter.inc({
-      operation: 'remove_item',
-      status: 'error',
-      store_id: 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_remove_item', 'error');
+    throw error;
   }
-};
+});
 
 /**
  * Clear Cart Controller
  * 
  * Removes all items from the cart
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
  */
-export const clearCart = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'clear_cart' });
-  
+export const clearCart = asyncHandler(async (req, res) => {
+  const { cartId } = req.params;
+
+  if (!cartId) {
+    throw new ValidationError('Cart ID is required');
+  }
+
+  logger.info('Clearing cart', {
+    cartId,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_clear', 'start');
+
   try {
-    const cartId = req.params.cartId;
+    const cart = await CartService.clearCart(cartId, req.user);
 
-    logger.info('Clearing cart', {
-      cartId,
-      userId: req.user?.id
-    });
-
-    const cart = await CartService.clearCart(cartId);
-
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'clear_cart',
-      status: 'success',
-      store_id: cart.storeId
-    });
-
-    cartValueGauge.set({ store_id: cart.storeId }, 0);
+    recordOperation('cart_clear', 'success');
 
     logger.info('Cart cleared successfully', {
-      cartId,
-      userId: req.user?.id
+      cartId
     });
 
     res.json({
       success: true,
       message: 'Cart cleared successfully',
-      data: cart,
-      timestamp: new Date().toISOString()
+      data: cart
     });
-
   } catch (error) {
-    logger.error('Error clearing cart', {
-      error: error.message,
-      cartId: req.params.cartId,
-      userId: req.user?.id
-    });
-
-    cartOperationCounter.inc({
-      operation: 'clear_cart',
-      status: 'error',
-      store_id: 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_clear', 'error');
+    throw error;
   }
-};
+});
 
 /**
  * Apply Discount Controller
  * 
  * Applies a discount code to the cart
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
  */
-export const applyDiscount = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'apply_discount' });
-  
+export const applyDiscount = asyncHandler(async (req, res) => {
+  const { cartId } = req.params;
+  const { discountCode, discountType, discountValue } = req.body;
+
+  // Input validation
+  if (!cartId) {
+    throw new ValidationError('Cart ID is required');
+  }
+
+  if (!discountCode && (!discountType || !discountValue)) {
+    throw new ValidationError('Either discount code or discount type and value are required');
+  }
+
+  logger.info('Applying discount to cart', {
+    cartId,
+    discountCode,
+    discountType,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_apply_discount', 'start');
+
   try {
-    const cartId = req.params.cartId;
-    const { discountCode } = req.body;
-
-    logger.info('Applying discount to cart', {
-      cartId,
+    const discountData = {
       discountCode,
-      userId: req.user?.id
-    });
+      discountType,
+      discountValue
+    };
 
-    const cart = await CartService.applyDiscount(cartId, discountCode);
+    const cart = await CartService.applyDiscount(cartId, discountData, req.user);
 
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'apply_discount',
-      status: 'success',
-      store_id: cart.storeId
-    });
-
-    cartValueGauge.set({ store_id: cart.storeId }, cart.totalAmount);
+    recordOperation('cart_apply_discount', 'success');
 
     logger.info('Discount applied successfully', {
       cartId,
       discountCode,
-      discountAmount: cart.discountAmount,
-      newTotal: cart.totalAmount,
-      userId: req.user?.id
+      discountAmount: cart.discount?.amount
     });
 
     res.json({
       success: true,
       message: 'Discount applied successfully',
-      data: cart,
-      timestamp: new Date().toISOString()
+      data: cart
     });
-
   } catch (error) {
-    logger.error('Error applying discount', {
-      error: error.message,
-      cartId: req.params.cartId,
-      discountCode: req.body.discountCode,
-      userId: req.user?.id
-    });
-
-    cartOperationCounter.inc({
-      operation: 'apply_discount',
-      status: 'error',
-      store_id: 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_apply_discount', 'error');
+    throw error;
   }
-};
+});
 
 /**
  * Validate Cart Controller
  * 
- * Validates cart contents against current prices and stock levels
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Validates cart items against current stock and pricing
  */
-export const validateCart = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'validate_cart' });
-  
+export const validateCart = asyncHandler(async (req, res) => {
+  const { cartId } = req.params;
+
+  if (!cartId) {
+    throw new ValidationError('Cart ID is required');
+  }
+
+  logger.info('Validating cart', {
+    cartId,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_validate', 'start');
+
   try {
-    const cartId = req.params.cartId;
+    const validation = await CartService.validateCart(cartId, req.user);
 
-    logger.info('Validating cart', {
-      cartId,
-      userId: req.user?.id
-    });
-
-    const validation = await CartService.validateCart(cartId);
-
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'validate_cart',
-      status: 'success',
-      store_id: validation.cart.storeId
-    });
+    recordOperation('cart_validate', 'success');
 
     logger.info('Cart validation completed', {
       cartId,
       isValid: validation.isValid,
-      issueCount: validation.issues.length,
-      userId: req.user?.id
+      issues: validation.issues?.length || 0
     });
 
     res.json({
       success: true,
-      message: 'Cart validation completed',
-      data: validation,
-      timestamp: new Date().toISOString()
+      data: validation
     });
-
   } catch (error) {
-    logger.error('Error validating cart', {
-      error: error.message,
-      cartId: req.params.cartId,
-      userId: req.user?.id
-    });
-
-    cartOperationCounter.inc({
-      operation: 'validate_cart',
-      status: 'error',
-      store_id: 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_validate', 'error');
+    throw error;
   }
-};
+});
 
 /**
  * Checkout Cart Controller
  * 
  * Processes cart checkout and creates a sale
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
  */
-export const checkoutCart = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'checkout_cart' });
-  
+export const checkoutCart = asyncHandler(async (req, res) => {
+  const { cartId } = req.params;
+  const { paymentMethod, billingAddress, shippingAddress } = req.body;
+
+  // Input validation
+  if (!cartId) {
+    throw new ValidationError('Cart ID is required');
+  }
+
+  if (!paymentMethod) {
+    throw new ValidationError('Payment method is required');
+  }
+
+  logger.info('Processing cart checkout', {
+    cartId,
+    paymentMethod,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_checkout', 'start');
+
   try {
-    const cartId = req.params.cartId;
     const checkoutData = {
-      paymentMethod: req.body.paymentMethod,
-      paymentDetails: req.body.paymentDetails,
-      shippingAddress: req.body.shippingAddress,
-      billingAddress: req.body.billingAddress,
-      notes: req.body.notes
+      paymentMethod,
+      billingAddress,
+      shippingAddress
     };
 
-    logger.info('Processing cart checkout', {
-      cartId,
-      paymentMethod: checkoutData.paymentMethod,
-      userId: req.user?.id
-    });
+    const sale = await CartService.checkoutCart(cartId, checkoutData, req.user);
 
-    const result = await CartService.checkout(cartId, checkoutData, req.user);
-
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'checkout_cart',
-      status: 'success',
-      store_id: result.sale.storeId
-    });
-
-    // Cart is now inactive
-    activeCartsGauge.dec({ store_id: result.sale.storeId });
-    cartValueGauge.set({ store_id: result.sale.storeId }, 0);
+    recordOperation('cart_checkout', 'success');
 
     logger.info('Cart checkout completed successfully', {
       cartId,
-      saleId: result.sale.id,
-      totalAmount: result.sale.totalAmount,
-      userId: req.user?.id
+      saleId: sale.id,
+      totalAmount: sale.totalAmount
     });
 
     res.json({
       success: true,
       message: 'Checkout completed successfully',
-      data: result,
-      timestamp: new Date().toISOString()
+      data: sale
     });
-
   } catch (error) {
-    logger.error('Error processing cart checkout', {
-      error: error.message,
-      cartId: req.params.cartId,
-      paymentMethod: req.body.paymentMethod,
-      userId: req.user?.id
-    });
-
-    cartOperationCounter.inc({
-      operation: 'checkout_cart',
-      status: 'error',
-      store_id: 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_checkout', 'error');
+    throw error;
   }
-};
+});
 
 /**
  * Get Customer Carts Controller
  * 
- * Retrieves all carts for a specific customer
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Retrieves all carts for a customer
  */
-export const getCustomerCarts = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'get_customer_carts' });
-  
+export const getCustomerCarts = asyncHandler(async (req, res) => {
+  const { customerId } = req.params;
+  const { page = 1, limit = 10, status } = req.query;
+
+  if (!customerId) {
+    throw new ValidationError('Customer ID is required');
+  }
+
+  logger.info('Retrieving customer carts', {
+    customerId,
+    page,
+    limit,
+    status,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_get_customer', 'start');
+
   try {
-    const customerId = parseInt(req.params.customerId);
-    const filters = {
-      status: req.query.status,
-      storeId: req.query.storeId ? parseInt(req.query.storeId) : null
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      status
     };
 
-    logger.info('Retrieving customer carts', {
-      customerId,
-      filters,
-      userId: req.user?.id
-    });
+    const result = await CartService.getCustomerCarts(customerId, options, req.user);
 
-    const carts = await CartService.getCustomerCarts(customerId, filters);
-
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'get_customer_carts',
-      status: 'success',
-      store_id: filters.storeId || 'all'
-    });
+    recordOperation('cart_get_customer', 'success');
 
     logger.info('Customer carts retrieved successfully', {
       customerId,
-      cartCount: carts.length,
-      userId: req.user?.id
+      cartCount: result.carts?.length || 0,
+      totalCount: result.total
     });
 
     res.json({
       success: true,
-      message: 'Customer carts retrieved successfully',
-      data: carts,
-      timestamp: new Date().toISOString()
+      data: result
     });
-
   } catch (error) {
-    logger.error('Error retrieving customer carts', {
-      error: error.message,
-      customerId: req.params.customerId,
-      userId: req.user?.id
-    });
-
-    cartOperationCounter.inc({
-      operation: 'get_customer_carts',
-      status: 'error',
-      store_id: 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_get_customer', 'error');
+    throw error;
   }
-};
+});
 
 /**
  * Delete Cart Controller
  * 
- * Permanently deletes a cart
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Deletes a cart permanently
  */
-export const deleteCart = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'delete_cart' });
-  
+export const deleteCart = asyncHandler(async (req, res) => {
+  const { cartId } = req.params;
+
+  if (!cartId) {
+    throw new ValidationError('Cart ID is required');
+  }
+
+  logger.info('Deleting cart', {
+    cartId,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_delete', 'start');
+
   try {
-    const cartId = req.params.cartId;
+    await CartService.deleteCart(cartId, req.user);
 
-    logger.info('Deleting cart', {
-      cartId,
-      userId: req.user?.id
-    });
-
-    const result = await CartService.deleteCart(cartId);
-
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'delete_cart',
-      status: 'success',
-      store_id: result.storeId
-    });
-
-    activeCartsGauge.dec({ store_id: result.storeId });
+    recordOperation('cart_delete', 'success');
 
     logger.info('Cart deleted successfully', {
-      cartId,
-      userId: req.user?.id
+      cartId
     });
 
     res.json({
       success: true,
-      message: 'Cart deleted successfully',
-      data: { cartId, deleted: true },
-      timestamp: new Date().toISOString()
+      message: 'Cart deleted successfully'
     });
-
   } catch (error) {
-    logger.error('Error deleting cart', {
-      error: error.message,
-      cartId: req.params.cartId,
-      userId: req.user?.id
-    });
-
-    cartOperationCounter.inc({
-      operation: 'delete_cart',
-      status: 'error',
-      store_id: 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_delete', 'error');
+    throw error;
   }
-};
+});
 
 /**
  * Update Item Quantity Controller
  * 
  * Updates the quantity of a specific item in the cart
- * Setting quantity to 0 removes the item from cart
- * 
- * @param {Object} req - Express request object with userId, productId, and quantity
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
  */
-export const updateItemQuantity = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'update_item_quantity' });
-  
+export const updateItemQuantity = asyncHandler(async (req, res) => {
+  const { cartId, itemId } = req.params;
+  const { quantity } = req.body;
+
+  // Input validation
+  if (!cartId || !itemId) {
+    throw new ValidationError('Cart ID and item ID are required');
+  }
+
+  if (!quantity || quantity <= 0) {
+    throw new ValidationError('Positive quantity is required');
+  }
+
+  logger.info('Updating item quantity', {
+    cartId,
+    itemId,
+    quantity,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_update_quantity', 'start');
+
   try {
-    const { userId, productId } = req.params;
-    const { quantity } = req.body;
+    const cart = await CartService.updateItemQuantity(cartId, itemId, quantity, req.user);
 
-    logger.info('Updating item quantity in cart', {
-      userId,
-      productId,
-      quantity,
-      userAgent: req.get('User-Agent'),
-      ip: req.ip
-    });
-
-    // Get user's cart
-    const cart = await CartService.getUserCart(userId);
-    if (!cart) {
-      return res.status(404).json({
-        success: false,
-        message: 'Cart not found',
-        error: 'NO_CART_FOUND',
-        timestamp: new Date().toISOString()
-      });
-    }
-
-    // Update item quantity (or remove if quantity is 0)
-    const updatedCart = quantity === 0 
-      ? await CartService.removeItem(cart.id, productId)
-      : await CartService.updateItemQuantity(cart.id, productId, quantity);
-
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'update_item_quantity',
-      status: 'success',
-      store_id: updatedCart.storeId
-    });
+    recordOperation('cart_update_quantity', 'success');
 
     logger.info('Item quantity updated successfully', {
-      cartId: cart.id,
-      productId,
-      newQuantity: quantity,
-      userId: req.user?.id
+      cartId,
+      itemId,
+      quantity
     });
 
     res.json({
       success: true,
-      message: quantity === 0 ? 'Item removed from cart' : 'Item quantity updated',
-      data: updatedCart,
-      timestamp: new Date().toISOString()
+      message: 'Item quantity updated successfully',
+      data: cart
     });
-
   } catch (error) {
-    logger.error('Error updating item quantity', {
-      error: error.message,
-      stack: error.stack,
-      userId: req.params.userId,
-      productId: req.params.productId,
-      quantity: req.body.quantity,
-      ip: req.ip
-    });
-
-    cartOperationCounter.inc({
-      operation: 'update_item_quantity',
-      status: 'error',
-      store_id: 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_update_quantity', 'error');
+    throw error;
   }
-};
+});
 
 /**
  * Prepare Checkout Controller
  * 
- * Validates cart contents and prepares checkout data including:
- * - Final pricing calculations
- * - Stock availability verification
- * - Shipping and tax calculations
- * - Payment preparation
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Prepares cart for checkout by validating and calculating totals
  */
-export const prepareCheckout = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'prepare_checkout' });
-  
+export const prepareCheckout = asyncHandler(async (req, res) => {
+  const { cartId } = req.params;
+  const { shippingMethod, taxInfo } = req.body;
+
+  if (!cartId) {
+    throw new ValidationError('Cart ID is required');
+  }
+
+  logger.info('Preparing cart for checkout', {
+    cartId,
+    shippingMethod,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_prepare_checkout', 'start');
+
   try {
-    const { userId } = req.params;
-    const { storeId, shippingAddress, paymentMethod } = req.body;
+    const checkoutData = {
+      shippingMethod,
+      taxInfo
+    };
 
-    logger.info('Preparing checkout for cart', {
-      userId,
-      storeId,
-      paymentMethod,
-      userAgent: req.get('User-Agent'),
-      ip: req.ip
-    });
+    const checkout = await CartService.prepareCheckout(cartId, checkoutData, req.user);
 
-    // Get user's cart
-    const cart = await CartService.getUserCart(userId);
-    if (!cart?.items?.length) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cart is empty or not found',
-        error: 'EMPTY_CART',
-        timestamp: new Date().toISOString()
-      });
-    }
+    recordOperation('cart_prepare_checkout', 'success');
 
-    // Prepare checkout data
-    const checkoutData = await CartService.prepareCheckout(cart.id, {
-      storeId,
-      shippingAddress,
-      paymentMethod,
-      userId: req.user?.id
-    });
-
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'prepare_checkout',
-      status: 'success',
-      store_id: storeId
-    });
-
-    logger.info('Checkout prepared successfully', {
-      cartId: cart.id,
-      storeId,
-      totalAmount: checkoutData.total,
-      itemCount: checkoutData.items.length,
-      userId: req.user?.id
+    logger.info('Cart prepared for checkout successfully', {
+      cartId,
+      totalAmount: checkout.totalAmount,
+      isValid: checkout.isValid
     });
 
     res.json({
       success: true,
-      message: 'Checkout prepared successfully',
-      data: checkoutData,
-      timestamp: new Date().toISOString()
+      data: checkout
     });
-
   } catch (error) {
-    logger.error('Error preparing checkout', {
-      error: error.message,
-      stack: error.stack,
-      userId: req.params.userId,
-      storeId: req.body.storeId,
-      ip: req.ip
-    });
-
-    cartOperationCounter.inc({
-      operation: 'prepare_checkout',
-      status: 'error',
-      store_id: req.body.storeId || 'unknown'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_prepare_checkout', 'error');
+    throw error;
   }
-};
+});
 
 /**
  * Get Cart Statistics Controller
  * 
- * Provides aggregate statistics about cart usage for admin/analytics
- * 
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Retrieves cart statistics for analytics
  */
-export const getCartStatistics = async (req, res, next) => {
-  const timer = cartOperationDuration.startTimer({ operation: 'get_statistics' });
-  
+export const getCartStatistics = asyncHandler(async (req, res) => {
+  const { storeId, period, startDate, endDate } = req.query;
+
+  logger.info('Retrieving cart statistics', {
+    storeId,
+    period,
+    startDate,
+    endDate,
+    userId: req.user?.id
+  });
+
+  recordOperation('cart_statistics', 'start');
+
   try {
-    logger.info('Retrieving cart statistics', {
-      userId: req.user?.id,
-      userAgent: req.get('User-Agent'),
-      ip: req.ip
-    });
+    const filters = {
+      storeId,
+      period,
+      startDate,
+      endDate
+    };
 
-    const statistics = await CartService.getStatistics();
+    const statistics = await CartService.getCartStatistics(filters, req.user);
 
-    // Update metrics
-    cartOperationCounter.inc({
-      operation: 'get_statistics',
-      status: 'success',
-      store_id: 'all'
-    });
+    recordOperation('cart_statistics', 'success');
 
     logger.info('Cart statistics retrieved successfully', {
-      totalCarts: statistics.totalActiveCarts,
-      averageValue: statistics.averageCartValue,
-      userId: req.user?.id
+      storeId,
+      period,
+      totalCarts: statistics.totalCarts
     });
 
     res.json({
       success: true,
-      message: 'Cart statistics retrieved successfully',
-      data: statistics,
-      timestamp: new Date().toISOString()
+      data: statistics
     });
-
   } catch (error) {
-    logger.error('Error retrieving cart statistics', {
-      error: error.message,
-      stack: error.stack,
-      userId: req.user?.id,
-      ip: req.ip
-    });
-
-    cartOperationCounter.inc({
-      operation: 'get_statistics',
-      status: 'error',
-      store_id: 'all'
-    });
-
-    next(error);
-  } finally {
-    timer();
+    recordOperation('cart_statistics', 'error');
+    throw error;
   }
-};
+});

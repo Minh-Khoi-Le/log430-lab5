@@ -18,7 +18,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { ApiError } from '../middleware/errorHandler.js';
+import { BaseError } from '@log430/shared/middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 import { 
   cacheStockData, 
@@ -111,7 +111,7 @@ class StockService {
       return transformedStocks;
     } catch (error) {
       logger.error('Error fetching stock by product:', { productId, error: error.message });
-      throw new ApiError(500, 'Failed to fetch stock information');
+      throw new BaseError('Failed to fetch stock information', 500);
     }
   }
   
@@ -216,7 +216,7 @@ class StockService {
       };
     } catch (error) {
       logger.error('Error fetching stock by store:', { storeId, error: error.message });
-      throw new ApiError(500, 'Failed to fetch store stock information');
+      throw new BaseError('Failed to fetch store stock information', 500);
     }
   }
   
@@ -257,7 +257,7 @@ class StockService {
         
         // Validate the operation
         if (type === 'adjustment' && quantity < 0 && Math.abs(quantity) > previousQuantity) {
-          throw new ApiError(400, `Insufficient stock. Current quantity: ${previousQuantity}, requested adjustment: ${quantity}`);
+          throw new BaseError(`Insufficient stock. Current quantity: ${previousQuantity}, requested adjustment: ${quantity}`, 400);
         }
         
         // Create or update stock record
@@ -320,11 +320,11 @@ class StockService {
         };
       });
     } catch (error) {
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       logger.error('Error updating stock:', { updateData, error: error.message });
-      throw new ApiError(500, 'Failed to update stock');
+      throw new BaseError('Failed to update stock', 500);
     }
   }
   
@@ -370,7 +370,7 @@ class StockService {
       return { successful, failed };
     } catch (error) {
       logger.error('Error in bulk stock update:', { error: error.message });
-      throw new ApiError(500, 'Failed to process bulk stock update');
+      throw new BaseError('Failed to process bulk stock update', 500);
     }
   }
   
@@ -397,7 +397,7 @@ class StockService {
         });
         
         if (!fromStock || fromStock.quantity < quantity) {
-          throw new ApiError(400, `Insufficient stock in source store. Available: ${fromStock?.quantity || 0}, requested: ${quantity}`);
+          throw new BaseError(`Insufficient stock in source store. Available: ${fromStock?.quantity || 0}, requested: ${quantity}`, 400);
         }
         
         // Get or create destination stock
@@ -513,11 +513,11 @@ class StockService {
         };
       });
     } catch (error) {
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       logger.error('Error transferring stock:', { transferData, error: error.message });
-      throw new ApiError(500, 'Failed to transfer stock');
+      throw new BaseError('Failed to transfer stock', 500);
     }
   }
   
@@ -687,7 +687,7 @@ class StockService {
       return summary;
     } catch (error) {
       logger.error('Error generating stock summary:', { filters, error: error.message });
-      throw new ApiError(500, 'Failed to generate stock summary');
+      throw new BaseError('Failed to generate stock summary', 500);
     }
   }
   
@@ -726,7 +726,7 @@ class StockService {
       };
     } catch (error) {
       logger.error('Error checking stock availability:', { productId, storeId, requestedQuantity, error: error.message });
-      throw new ApiError(500, 'Failed to check stock availability');
+      throw new BaseError('Failed to check stock availability', 500);
     }
   }
 }

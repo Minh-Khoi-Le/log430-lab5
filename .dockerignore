@@ -1,0 +1,182 @@
+# Docker ignore file for LOG430 Lab 5
+# Optimizes build times by excluding unnecessary files from build context
+
+# Node.js dependencies (will be installed during build)
+node_modules/*
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Git files
+.git/
+.gitignore
+.gitattributes
+**/.git/
+**/.gitignore
+
+# Documentation and README files
+README.md
+**/README.md
+docs/
+**/*.md
+LICENSE
+**/LICENSE
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Operating system files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Logs
+logs/
+*.log
+**/logs/
+**/*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+coverage/
+.nyc_output/
+
+# Environment files (security)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/.env*
+
+# Build outputs
+dist/
+build/
+out/
+**/dist/
+**/build/
+**/out/
+
+# Temporary files
+tmp/
+temp/
+**/tmp/
+**/temp/
+.tmp/
+.temp/
+
+# Test files and coverage
+test/
+tests/
+**/test/
+**/tests/
+__tests__/
+**/__tests__/
+*.test.js
+*.spec.js
+coverage/
+.nyc_output/
+
+# Docker files (don't include in context)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Kubernetes files
+k8s/
+**/*.yaml
+**/*.yml
+
+# Scripts that aren't needed in container
+scripts/
+**/*.bat
+**/*.sh
+
+# Package manager lock files (use package.json instead)
+yarn.lock
+package-lock.json
+**/yarn.lock
+**/package-lock.json
+
+# Monitoring and config files not needed in container
+prometheus.yml
+grafana/
+monitoring/
+
+# Client/Frontend files (if building backend services)
+client/
+**/client/
+
+# API Gateway specific files
+api-gateway/
+kong*.yml
+
+# Development and deployment configs
+docker-compose*.yml
+start-*.bat
+stop-*.bat
+quick-start*.bat
+
+# UML and design files
+**/*.puml
+**/*.svg
+UML/
+svg/
+
+# Cache directories
+.cache/
+**/.cache/
+
+# Editor swap files
+*.swp
+*.swo
+
+# MacOS specific
+.AppleDouble
+.LSOverride
+
+# Windows specific
+*.lnk
+
+# Linux specific
+*~
+
+# Vim
+*.swp
+*.swo
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Backup files
+*.bak
+*.backup
+*~

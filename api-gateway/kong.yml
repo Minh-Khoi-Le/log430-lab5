@@ -1,0 +1,419 @@
+# Kong Declarative Configuration for LOG430 Microservices Gateway
+# Phase 3.2 & 3.3 - Advanced Gateway Features and Load Balancing
+# This configuration defines all services, routes, upstreams, and plugins for the API Gateway
+
+_format_version: "3.0"
+_transform: true
+
+# Upstreams - Load Balancing Configuration (Phase 3.3)
+upstreams:
+  # Product Service Load Balancer - 2+ instances for catalog queries
+  - name: product-service-upstream
+    algorithm: round-robin
+    hash_on: none
+    hash_fallback: none
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 30
+          successes: 2
+        unhealthy:
+          interval: 10
+          http_failures: 3
+      passive:
+        healthy:
+          http_statuses: [200, 201, 202, 204]
+          successes: 2
+        unhealthy:
+          http_statuses: [429, 500, 502, 503, 504]
+          http_failures: 3
+    targets:
+      - target: product-service-1:3001
+        weight: 100
+      - target: product-service-2:3001
+        weight: 100
+
+  # Stock Service Load Balancer - 2+ instances (shared critical service)
+  - name: stock-service-upstream
+    algorithm: round-robin
+    hash_on: none
+    hash_fallback: none
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 30
+          successes: 2
+        unhealthy:
+          interval: 10
+          http_failures: 3
+      passive:
+        healthy:
+          http_statuses: [200, 201, 202, 204]
+          successes: 2
+        unhealthy:
+          http_statuses: [429, 500, 502, 503, 504]
+          http_failures: 3
+    targets:
+      - target: stock-service-1:3004
+        weight: 100
+      - target: stock-service-2:3004
+        weight: 100
+
+  # Cart Service Load Balancer - 2+ instances for high availability
+  - name: cart-service-upstream
+    algorithm: round-robin
+    hash_on: none
+    hash_fallback: none
+    healthchecks:
+      active:
+        type: http
+        http_path: /health
+        healthy:
+          interval: 30
+          successes: 2
+        unhealthy:
+          interval: 10
+          http_failures: 3
+      passive:
+        healthy:
+          http_statuses: [200, 201, 202, 204]
+          successes: 2
+        unhealthy:
+          http_statuses: [429, 500, 502, 503, 504]
+          http_failures: 3
+    targets:
+      - target: cart-service-1:3007
+        weight: 100
+      - target: cart-service-2:3007
+        weight: 100
+
+# Services - Backend microservices with load balancing
+services:
+  # Product Service - Load Balanced
+  - name: product-service
+    host: product-service-upstream
+    tags:
+      - microservice
+      - product
+      - load-balanced
+    
+  # User Service - Single instance (authentication service)
+  - name: user-service
+    url: http://user-service:3002
+    tags:
+      - microservice
+      - user
+      - auth
+    
+  # Store Service - Single instance
+  - name: store-service
+    url: http://store-service:3003
+    tags:
+      - microservice
+      - store
+    
+  # Stock Service - Load Balanced (critical service)
+  - name: stock-service
+    host: stock-service-upstream
+    tags:
+      - microservice
+      - stock
+      - inventory
+      - load-balanced
+    
+  # Sales Service - Single instance
+  - name: sales-service
+    url: http://sales-service:3005
+    tags:
+      - microservice
+      - sales
+      - orders
+    
+  # Refund Service - Single instance
+  - name: refund-service
+    url: http://refund-service:3006
+    tags:
+      - microservice
+      - refund
+      - returns
+    
+  # Cart Service - Load Balanced (high availability)
+  - name: cart-service
+    host: cart-service-upstream
+    tags:
+      - microservice
+      - cart
+      - ecommerce
+      - load-balanced
+
+# Routes - API endpoints routing
+routes:
+  # Product Service Routes
+  - name: product-routes
+    service:
+      name: product-service
+    paths:
+      - /api/products
+    strip_path: false
+    preserve_host: true
+    
+  # User Service Routes - Auth
+  - name: user-auth-routes
+    service:
+      name: user-service
+    paths:
+      - /api/auth
+    strip_path: false
+    preserve_host: true
+    
+  # User Service Routes - Users
+  - name: user-routes
+    service:
+      name: user-service
+    paths:
+      - /api/users
+    strip_path: false
+    preserve_host: true
+    
+  # Store Service Routes
+  - name: store-routes
+    service:
+      name: store-service
+    paths:
+      - /api/stores
+    strip_path: false
+    preserve_host: true
+    
+  # Stock Service Routes
+  - name: stock-routes
+    service:
+      name: stock-service
+    paths:
+      - /api/stock
+    strip_path: false
+    preserve_host: true
+    
+  # Sales Service Routes
+  - name: sales-routes
+    service:
+      name: sales-service
+    paths:
+      - /api/sales
+    strip_path: false
+    preserve_host: true
+    
+  # Refund Service Routes
+  - name: refund-routes
+    service:
+      name: refund-service
+    paths:
+      - /api/refunds
+    strip_path: false
+    preserve_host: true
+    
+  # Cart Service Routes
+  - name: cart-routes
+    service:
+      name: cart-service
+    paths:
+      - /api/cart
+    strip_path: false
+    preserve_host: true
+
+# Global Plugins - Phase 3.2 Required Gateway Features
+plugins:
+  # CORS Plugin - Enable cross-origin requests
+  - name: cors
+    config:
+      origins:
+        - "http://localhost:5173"  # Vite dev server
+        - "http://localhost:3000"  # React app
+        - "http://localhost:8080"  # Alternative frontend port
+        - "https://your-frontend-domain.com"  # Production frontend
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - PATCH
+        - OPTIONS
+      headers:
+        - Accept
+        - Accept-Version
+        - Authorization
+        - Content-Length
+        - Content-MD5
+        - Content-Type
+        - Date
+        - X-Auth-Token
+        - X-Requested-With
+        - X-API-Key
+      exposed_headers:
+        - X-Auth-Token
+        - X-RateLimit-Limit
+        - X-RateLimit-Remaining
+      credentials: true
+      max_age: 3600
+      
+  # Rate Limiting Plugin - Advanced configuration
+  - name: rate-limiting
+    config:
+      minute: 100
+      hour: 1000
+      day: 10000
+      policy: local
+      hide_client_headers: false
+      
+  # Request Size Limiting Plugin
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 10  # 10MB
+      
+  # Prometheus Plugin - Enhanced metrics collection
+  - name: prometheus
+    config:
+      per_consumer: true
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+      
+  # File Log Plugin - Centralized logging
+  - name: file-log
+    config:
+      path: /var/log/kong/access.log
+      format: json
+      
+  # Request Transformer Plugin - Request/Response transformation
+  - name: request-transformer
+    config:
+      add:
+        headers:
+          - "X-Gateway-Source: kong-api-gateway"
+          - "X-Request-ID: $(request_id)"
+        querystring:
+          - "gateway_version: 1.0"
+      remove:
+        headers:
+          - "X-Internal-Secret"
+      rename:
+        headers:
+          - "X-Client-ID: X-Consumer-ID"
+          
+  # Response Transformer Plugin - Response transformation
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Gateway-Response: true"
+          - "X-Service-Version: 1.0"
+          - "X-Response-Time: $(upstream_response_time)"
+      remove:
+        headers:
+          - "X-Internal-Info"
+          
+  # IP Restriction Plugin - Security enhancement
+  - name: ip-restriction
+    config:
+      allow:
+        - "127.0.0.1"
+        - "192.168.0.0/16"
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
+      # deny: []  # Add IPs to block if needed
+      
+  # JWT Authentication Plugin - Gateway-level JWT validation
+  - name: jwt
+    config:
+      secret_is_base64: false
+      claims_to_verify:
+        - exp
+        - iat
+      key_claim_name: iss
+      maximum_expiration: 3600  # 1 hour
+      run_on_preflight: false
+      
+  # Key Authentication Plugin - API Key validation
+  - name: key-auth
+    config:
+      key_names:
+        - "X-API-Key"
+        - "apikey"
+      key_in_body: false
+      key_in_header: true
+      key_in_query: true
+      hide_credentials: true
+      
+  # ACL Plugin - Access Control Lists
+  - name: acl
+    config:
+      allow:
+        - "frontend-users"
+        - "mobile-users"
+        - "admin-users"
+      hide_groups_header: false
+
+# Consumers - Enhanced API Key and JWT management
+consumers:
+  # Frontend Application Consumer
+  - username: frontend-app
+    tags:
+      - frontend
+      - web-client
+    keyauth_credentials:
+      - key: frontend-app-key-12345
+    acls:
+      - group: frontend-users
+    jwt_secrets:
+      - key: frontend-jwt-secret
+        algorithm: HS256
+        secret: "your-frontend-jwt-secret-change-in-production"
+    
+  # Mobile Application Consumer  
+  - username: mobile-app
+    tags:
+      - mobile
+      - app-client
+    keyauth_credentials:
+      - key: mobile-app-key-67890
+    acls:
+      - group: mobile-users
+    jwt_secrets:
+      - key: mobile-jwt-secret
+        algorithm: HS256
+        secret: "your-mobile-jwt-secret-change-in-production"
+    
+  # Admin Dashboard Consumer
+  - username: admin-dashboard
+    tags:
+      - admin
+      - dashboard
+    keyauth_credentials:
+      - key: admin-dashboard-key-abcde
+    acls:
+      - group: admin-users
+    jwt_secrets:
+      - key: admin-jwt-secret
+        algorithm: HS256
+        secret: "your-admin-jwt-secret-change-in-production"
+    
+  # Testing Consumer
+  - username: testing-client
+    tags:
+      - testing
+      - development
+    keyauth_credentials:
+      - key: testing-key-xyz123
+    acls:
+      - group: frontend-users
+      - group: mobile-users
+      - group: admin-users
+    jwt_secrets:
+      - key: testing-jwt-secret
+        algorithm: HS256
+        secret: "your-testing-jwt-secret-change-in-production"
+

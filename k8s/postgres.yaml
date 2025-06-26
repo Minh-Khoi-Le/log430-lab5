@@ -30,11 +30,11 @@ spec:
         - containerPort: 5432
         env:
         - name: POSTGRES_USER
-          value: postgres
+          value: "postgres"
         - name: POSTGRES_PASSWORD
-          value: postgres
+          value: "postgres123"
         - name: POSTGRES_DB
-          value: magasin_db
+          value: "store_db"
         volumeMounts:
         - mountPath: /var/lib/postgresql/data
           name: postgres-data
@@ -46,9 +46,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: postgres
+  name: postgres-service
 spec:
   selector:
     app: postgres
   ports:
   - port: 5432
+    targetPort: 5432
+  type: ClusterIP

@@ -7,323 +7,382 @@
  * Features:
  * - Store CRUD operations (Create, Read, Update, Delete)
  * - Store listing and details retrieval
- * - Integration with metrics for monitoring
- * - Comprehensive error handling
+ * - Store statistics and analytics
+ * - Comprehensive error handling with shared components
  * 
  * @author Store Service Team
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 import StoreService from '../services/store.service.js';
-import { ApiError } from '../middleware/errorHandler.js';
-import { promClient } from '../middleware/metrics.js';
 
-// Metrics for store operations
-const storeOperationCounter = new promClient.Counter({
-  name: 'store_operations_total',
-  help: 'Total number of store operations',
-  labelNames: ['operation', 'status']
-});
-
-const storeOperationDuration = new promClient.Histogram({
-  name: 'store_operation_duration_seconds',
-  help: 'Duration of store operations in seconds',
-  labelNames: ['operation']
-});
+// Import shared components
+import {
+  ValidationError,
+  NotFoundError,
+  logger,
+  asyncHandler,
+  recordOperation
+} from '@log430/shared';
 
 /**
  * List Stores Controller
  * 
- * Retrieves a paginated list of all stores with optional filtering.
- * Supports query parameters for pagination and basic filtering.
- * 
- * @param {Request} req - Express request object with optional query parameters
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- * 
- * Query Parameters:
- * - page: Page number for pagination (default: 1)
- * - limit: Number of items per page (default: 10)
- * - search: Search term for store name filtering
+ * Retrieves a paginated list of all stores with optional filtering
  */
-export async function list(req, res, next) {
-  const timer = storeOperationDuration.startTimer({ operation: 'list' });
-  
+export const list = asyncHandler(async (req, res) => {
+  const { page = 1, limit = 10, search, status, city } = req.query;
+
+  logger.info('Retrieving stores list', {
+    page,
+    limit,
+    search,
+    status,
+    city,
+    userId: req.user?.id
+  });
+
+  recordOperation('store_list', 'start');
+
   try {
-    const { page = 1, limit = 10, search } = req.query;
-    
-    const result = await StoreService.getAllStores({
+    const options = {
       page: parseInt(page),
       limit: parseInt(limit),
-      search
+      search,
+      status,
+      city
+    };
+
+    const result = await StoreService.getAllStores(options, req.user);
+
+    recordOperation('store_list', 'success');
+
+    logger.info('Stores list retrieved successfully', {
+      storeCount: result.stores?.length || 0,
+      totalStores: result.total,
+      page,
+      limit
     });
-    
-    storeOperationCounter.inc({ operation: 'list', status: 'success' });
+
     res.json({
       success: true,
-      data: result.stores,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: result.total,
-        totalPages: Math.ceil(result.total / parseInt(limit))
-      }
+      data: result
     });
   } catch (error) {
-    storeOperationCounter.inc({ operation: 'list', status: 'error' });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('store_list', 'error');
+    throw error;
   }
-}
+});
 
 /**
  * Get Store Controller
  * 
- * Retrieves detailed information about a specific store by ID.
- * Returns comprehensive store data including location and operational details.
- * 
- * @param {Request} req - Express request object with store ID parameter
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Retrieves a single store by ID
  */
-export async function get(req, res, next) {
-  const timer = storeOperationDuration.startTimer({ operation: 'get' });
-  
+export const get = asyncHandler(async (req, res) => {
+  const { storeId } = req.params;
+
+  // Input validation
+  if (!storeId || isNaN(storeId)) {
+    throw new ValidationError('Valid store ID is required');
+  }
+
+  logger.info('Retrieving store', {
+    storeId,
+    userId: req.user?.id
+  });
+
+  recordOperation('store_get', 'start');
+
   try {
-    const { id } = req.params;
-    
-    if (!id || isNaN(parseInt(id))) {
-      throw new ApiError(400, 'Valid store ID is required');
-    }
-    
-    const store = await StoreService.getStoreById(parseInt(id));
-    
+    const store = await StoreService.getStoreById(storeId, req.user);
+
     if (!store) {
-      storeOperationCounter.inc({ operation: 'get', status: 'not_found' });
-      throw new ApiError(404, 'Store not found');
+      throw new NotFoundError('Store not found');
     }
-    
-    storeOperationCounter.inc({ operation: 'get', status: 'success' });
+
+    recordOperation('store_get', 'success');
+
+    logger.info('Store retrieved successfully', {
+      storeId: store.id,
+      storeName: store.name
+    });
+
     res.json({
       success: true,
       data: store
     });
   } catch (error) {
-    storeOperationCounter.inc({ operation: 'get', status: 'error' });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('store_get', 'error');
+    throw error;
   }
-}
+});
 
 /**
  * Create Store Controller
  * 
- * Creates a new store with the provided data.
- * Validates required fields and ensures data integrity.
- * 
- * @param {Request} req - Express request object with store data in body
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
- * 
- * Required Body Fields:
- * - name: Store name (string, 3-100 characters)
- * - address: Store address (string, 5-200 characters)
- * - city: City location (string, 2-50 characters)
- * - phone: Contact phone number (string, optional)
- * - email: Contact email (string, optional)
+ * Creates a new store
  */
-export async function create(req, res, next) {
-  const timer = storeOperationDuration.startTimer({ operation: 'create' });
-  
+export const create = asyncHandler(async (req, res) => {
+  const { name, address, city, province, postalCode, phone, email, managerId } = req.body;
+
+  // Input validation
+  if (!name || name.trim().length === 0) {
+    throw new ValidationError('Store name is required');
+  }
+
+  if (!address || address.trim().length === 0) {
+    throw new ValidationError('Store address is required');
+  }
+
+  if (!city || city.trim().length === 0) {
+    throw new ValidationError('City is required');
+  }
+
+  if (!province || province.trim().length === 0) {
+    throw new ValidationError('Province is required');
+  }
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new ValidationError('Valid email address is required');
+  }
+
+  logger.info('Creating new store', {
+    name,
+    city,
+    province,
+    managerId,
+    userId: req.user?.id
+  });
+
+  recordOperation('store_create', 'start');
+
   try {
-    const storeData = req.body;
-    
-    // Validate required fields
-    if (!storeData.name || storeData.name.length < 3 || storeData.name.length > 100) {
-      throw new ApiError(400, 'Store name is required and must be between 3-100 characters');
-    }
-    
-    if (!storeData.address || storeData.address.length < 5 || storeData.address.length > 200) {
-      throw new ApiError(400, 'Store address is required and must be between 5-200 characters');
-    }
-    
-    if (!storeData.city || storeData.city.length < 2 || storeData.city.length > 50) {
-      throw new ApiError(400, 'Store city is required and must be between 2-50 characters');
-    }
-    
-    // Optional email validation
-    if (storeData.email && !isValidEmail(storeData.email)) {
-      throw new ApiError(400, 'Invalid email format');
-    }
-    
-    const store = await StoreService.createStore(storeData);
-    
-    storeOperationCounter.inc({ operation: 'create', status: 'success' });
+    const storeData = {
+      name: name.trim(),
+      address: address.trim(),
+      city: city.trim(),
+      province: province.trim(),
+      postalCode: postalCode?.trim(),
+      phone: phone?.trim(),
+      email: email?.trim(),
+      managerId: managerId ? parseInt(managerId) : null,
+      createdBy: req.user?.id
+    };
+
+    const store = await StoreService.createStore(storeData, req.user);
+
+    recordOperation('store_create', 'success');
+
+    logger.info('Store created successfully', {
+      storeId: store.id,
+      storeName: store.name,
+      city: store.city
+    });
+
     res.status(201).json({
       success: true,
       message: 'Store created successfully',
       data: store
     });
   } catch (error) {
-    storeOperationCounter.inc({ operation: 'create', status: 'error' });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('store_create', 'error');
+    throw error;
   }
+});
+
+/**
+ * Validate store update data
+ */
+function validateUpdateData(data) {
+  const { name, address, city, province, email, status } = data;
+
+  if (name !== undefined && (!name || name.trim().length === 0)) {
+    throw new ValidationError('Store name cannot be empty');
+  }
+
+  if (address !== undefined && (!address || address.trim().length === 0)) {
+    throw new ValidationError('Store address cannot be empty');
+  }
+
+  if (city !== undefined && (!city || city.trim().length === 0)) {
+    throw new ValidationError('City cannot be empty');
+  }
+
+  if (province !== undefined && (!province || province.trim().length === 0)) {
+    throw new ValidationError('Province cannot be empty');
+  }
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new ValidationError('Valid email address is required');
+  }
+
+  if (status && !['active', 'inactive', 'closed'].includes(status)) {
+    throw new ValidationError('Status must be one of: active, inactive, closed');
+  }
+}
+
+/**
+ * Build update data object
+ */
+function buildUpdateData(body, userId) {
+  const { name, address, city, province, postalCode, phone, email, managerId, status } = body;
+
+  return {
+    ...(name !== undefined && { name: name.trim() }),
+    ...(address !== undefined && { address: address.trim() }),
+    ...(city !== undefined && { city: city.trim() }),
+    ...(province !== undefined && { province: province.trim() }),
+    ...(postalCode !== undefined && { postalCode: postalCode?.trim() }),
+    ...(phone !== undefined && { phone: phone?.trim() }),
+    ...(email !== undefined && { email: email?.trim() }),
+    ...(managerId !== undefined && { managerId: managerId ? parseInt(managerId) : null }),
+    ...(status !== undefined && { status }),
+    updatedBy: userId
+  };
 }
 
 /**
  * Update Store Controller
  * 
- * Updates an existing store with the provided data.
- * Supports partial updates and validates modified fields.
- * 
- * @param {Request} req - Express request object with store ID parameter and update data in body
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Updates an existing store
  */
-export async function update(req, res, next) {
-  const timer = storeOperationDuration.startTimer({ operation: 'update' });
-  
+export const update = asyncHandler(async (req, res) => {
+  const { storeId } = req.params;
+
+  // Input validation
+  if (!storeId || isNaN(storeId)) {
+    throw new ValidationError('Valid store ID is required');
+  }
+
+  validateUpdateData(req.body);
+
+  logger.info('Updating store', {
+    storeId,
+    hasName: !!req.body.name,
+    hasAddress: !!req.body.address,
+    status: req.body.status,
+    userId: req.user?.id
+  });
+
+  recordOperation('store_update', 'start');
+
   try {
-    const { id } = req.params;
-    const updateData = req.body;
-    
-    if (!id || isNaN(parseInt(id))) {
-      throw new ApiError(400, 'Valid store ID is required');
-    }
-    
-    // Validate update fields if provided
-    if (updateData.name !== undefined && (updateData.name.length < 3 || updateData.name.length > 100)) {
-      throw new ApiError(400, 'Store name must be between 3-100 characters');
-    }
-    
-    if (updateData.address !== undefined && (updateData.address.length < 5 || updateData.address.length > 200)) {
-      throw new ApiError(400, 'Store address must be between 5-200 characters');
-    }
-    
-    if (updateData.city !== undefined && (updateData.city.length < 2 || updateData.city.length > 50)) {
-      throw new ApiError(400, 'Store city must be between 2-50 characters');
-    }
-    
-    if (updateData.email !== undefined && updateData.email && !isValidEmail(updateData.email)) {
-      throw new ApiError(400, 'Invalid email format');
-    }
-    
-    const store = await StoreService.updateStore(parseInt(id), updateData);
-    
-    if (!store) {
-      storeOperationCounter.inc({ operation: 'update', status: 'not_found' });
-      throw new ApiError(404, 'Store not found');
-    }
-    
-    storeOperationCounter.inc({ operation: 'update', status: 'success' });
+    const updateData = buildUpdateData(req.body, req.user?.id);
+    const store = await StoreService.updateStore(storeId, updateData, req.user);
+
+    recordOperation('store_update', 'success');
+
+    logger.info('Store updated successfully', {
+      storeId: store.id,
+      storeName: store.name,
+      status: store.status
+    });
+
     res.json({
       success: true,
       message: 'Store updated successfully',
       data: store
     });
   } catch (error) {
-    storeOperationCounter.inc({ operation: 'update', status: 'error' });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('store_update', 'error');
+    throw error;
   }
-}
+});
 
 /**
  * Remove Store Controller
  * 
- * Deletes a store by ID after validating dependencies.
- * Ensures data integrity by checking for related records.
- * 
- * @param {Request} req - Express request object with store ID parameter
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Soft deletes a store (marks as inactive)
  */
-export async function remove(req, res, next) {
-  const timer = storeOperationDuration.startTimer({ operation: 'delete' });
-  
+export const remove = asyncHandler(async (req, res) => {
+  const { storeId } = req.params;
+  const { force = false } = req.query;
+
+  // Input validation
+  if (!storeId || isNaN(storeId)) {
+    throw new ValidationError('Valid store ID is required');
+  }
+
+  logger.info('Removing store', {
+    storeId,
+    force: force === 'true',
+    userId: req.user?.id
+  });
+
+  recordOperation('store_remove', 'start');
+
   try {
-    const { id } = req.params;
-    
-    if (!id || isNaN(parseInt(id))) {
-      throw new ApiError(400, 'Valid store ID is required');
-    }
-    
-    const result = await StoreService.deleteStore(parseInt(id));
-    
-    if (!result) {
-      storeOperationCounter.inc({ operation: 'delete', status: 'not_found' });
-      throw new ApiError(404, 'Store not found');
-    }
-    
-    storeOperationCounter.inc({ operation: 'delete', status: 'success' });
+    const result = await StoreService.removeStore(storeId, {
+      force: force === 'true',
+      removedBy: req.user?.id
+    }, req.user);
+
+    recordOperation('store_remove', 'success');
+
+    logger.info('Store removed successfully', {
+      storeId,
+      force: force === 'true',
+      storeName: result.storeName
+    });
+
     res.json({
       success: true,
-      message: 'Store deleted successfully'
+      message: `Store ${force === 'true' ? 'permanently deleted' : 'deactivated'} successfully`,
+      data: result
     });
   } catch (error) {
-    storeOperationCounter.inc({ operation: 'delete', status: 'error' });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('store_remove', 'error');
+    throw error;
   }
-}
+});
 
 /**
  * Get Store Statistics Controller
  * 
- * Retrieves operational statistics for a specific store.
- * Provides insights into store performance and activity.
- * 
- * @param {Request} req - Express request object with store ID parameter
- * @param {Response} res - Express response object
- * @param {Function} next - Express next middleware function
+ * Retrieves statistics and analytics for stores
  */
-export async function getStats(req, res, next) {
-  const timer = storeOperationDuration.startTimer({ operation: 'stats' });
-  
+export const getStats = asyncHandler(async (req, res) => {
+  const { storeId, period, includeInactive } = req.query;
+
+  logger.info('Retrieving store statistics', {
+    storeId,
+    period,
+    includeInactive: includeInactive === 'true',
+    userId: req.user?.id
+  });
+
+  recordOperation('store_stats', 'start');
+
   try {
-    const { id } = req.params;
-    
-    if (!id || isNaN(parseInt(id))) {
-      throw new ApiError(400, 'Valid store ID is required');
-    }
-    
-    const stats = await StoreService.getStoreStats(parseInt(id));
-    
-    if (!stats) {
-      storeOperationCounter.inc({ operation: 'stats', status: 'not_found' });
-      throw new ApiError(404, 'Store not found');
-    }
-    
-    storeOperationCounter.inc({ operation: 'stats', status: 'success' });
+    const options = {
+      storeId: storeId ? parseInt(storeId) : undefined,
+      period,
+      includeInactive: includeInactive === 'true'
+    };
+
+    const stats = await StoreService.getStoreStatistics(options, req.user);
+
+    recordOperation('store_stats', 'success');
+
+    logger.info('Store statistics retrieved successfully', {
+      storeId,
+      period,
+      totalStores: stats.totalStores,
+      activeStores: stats.activeStores
+    });
+
     res.json({
       success: true,
       data: stats
     });
   } catch (error) {
-    storeOperationCounter.inc({ operation: 'stats', status: 'error' });
-    next(error);
-  } finally {
-    timer();
+    recordOperation('store_stats', 'error');
+    throw error;
   }
-}
+});
 
-/**
- * Email validation helper function
- * 
- * @param {string} email - Email address to validate
- * @returns {boolean} - True if email format is valid
- */
-function isValidEmail(email) {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-}
-
+// Export all functions
 export default {
   list,
   get,

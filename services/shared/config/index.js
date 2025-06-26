@@ -44,7 +44,7 @@ class ConfigService {
 
       // Redis Configuration
       redis: {
-        url: process.env.REDIS_URL || 'redis://localhost:6379',
+        url: process.env.REDIS_URL || 'redis://redis:6379',
         password: process.env.REDIS_PASSWORD,
         database: parseInt(process.env.REDIS_DB || '0', 10),
         ttl: parseInt(process.env.CACHE_DEFAULT_TTL || '3600', 10),

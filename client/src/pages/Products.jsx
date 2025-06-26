@@ -11,6 +11,7 @@ import ProductList from "../components/ProductList";
 import Modal from "../components/Modal";
 import ProductEditForm from "../components/ProductEditForm";
 import { useUser } from "../context/UserContext";
+import { authenticatedFetch, API_ENDPOINTS } from "../api";
 import { 
   Box, 
   FormControlLabel, 
@@ -44,20 +45,7 @@ const Products = () => {
    */
   const fetchProducts = async () => {
     try {
-      const response = await fetch("http://localhost:3000/api/v1/maisonmere/products", {
-        headers: {
-          "Authorization": `Bearer ${user.token}`
-        }
-      });
-      
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("You are not authorized to view products. Please log in again.");
-        }
-        throw new Error("Error loading products");
-      }
-      
-      const data = await response.json();
+      const data = await authenticatedFetch(API_ENDPOINTS.PRODUCTS.BASE, user.token);
       setProducts(data);
     } catch (error) {
       console.error("Erreur:", error);
@@ -88,33 +76,27 @@ const Products = () => {
     try {
       setError(null);
       
-      const response = await fetch(`http://localhost:3000/api/v1/products/${productToDelete.id}`, {
+      await authenticatedFetch(API_ENDPOINTS.PRODUCTS.BY_ID(productToDelete.id), user.token, {
         method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${user.token || 'dummy-token'}`
-        }
       });
-      
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("You are not authorized to perform this action. Please log in again.");
-        } else if (response.status === 403) {
-          throw new Error("You don't have the necessary permissions for this action.");
-        } else if (response.status === 409 || response.status === 500) {
-          // 409 Conflict or 500 with constraint error
-          throw new Error("This product cannot be deleted because it is being used in stocks or sales.");
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || "Error deleting product");
-        }
-      }
       
       setModalOpen(false);
       setProductToDelete(null);
       fetchProducts();
     } catch (err) {
       console.error("Erreur:", err);
-      setError(err.message);
+      let errorMessage = err.message;
+      
+      // Handle specific error messages
+      if (err.message.includes('409') || err.message.includes('constraint')) {
+        errorMessage = "This product cannot be deleted because it is being used in stocks or sales.";
+      } else if (err.message.includes('401')) {
+        errorMessage = "You are not authorized to perform this action. Please log in again.";
+      } else if (err.message.includes('403')) {
+        errorMessage = "You don't have the necessary permissions for this action.";
+      }
+      
+      setError(errorMessage);
       setModalOpen(false);
     }
   };
@@ -141,36 +123,28 @@ const Products = () => {
         description: editedProduct.description
       };
       
-      const response = await fetch(`http://localhost:3000/api/v1/products/${editedProduct.id}`, {
+      await authenticatedFetch(API_ENDPOINTS.PRODUCTS.BY_ID(editedProduct.id), user.token, {
         method: "PUT",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${user.token || 'dummy-token'}`
-        },
         body: JSON.stringify(productToUpdate),
       });
-      
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("You are not authorized to perform this action. Please log in again.");
-        } else if (response.status === 403) {
-          throw new Error("You don't have the necessary permissions for this action.");
-        } else if (response.status === 400) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || "Validation error: Please check the required fields.");
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || "Error modifying the product");
-        }
-      }
       
       setEditModalOpen(false);
       setProductToEdit(null);
       fetchProducts();
     } catch (err) {
-      console.error("Erreur:", err);
-      setError(err.message);
-      setEditModalOpen(false);
+      console.error("Error updating product:", err);
+      let errorMessage = err.message;
+      
+      // Handle specific error messages
+      if (err.message.includes('401')) {
+        errorMessage = "You are not authorized to perform this action. Please log in again.";
+      } else if (err.message.includes('403')) {
+        errorMessage = "You don't have the necessary permissions for this action.";
+      } else if (err.message.includes('400')) {
+        errorMessage = "Validation error: Please check the required fields.";
+      }
+      
+      setError(errorMessage);
     }
   };
   
@@ -195,12 +169,8 @@ const Products = () => {
     try {
       setError(null);
       
-      const response = await fetch("http://localhost:3000/api/v1/products", {
+      await authenticatedFetch(API_ENDPOINTS.PRODUCTS.BASE, user.token, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${user.token}`
-        },
         body: JSON.stringify({
           name: newProduct.name,
           price: parseFloat(newProduct.price),
@@ -208,25 +178,22 @@ const Products = () => {
         }),
       });
       
-      if (!response.ok) {
-        if (response.status === 401) {
-          throw new Error("You are not authorized to perform this action. Please log in again.");
-        } else if (response.status === 403) {
-          throw new Error("You don't have the necessary permissions for this action.");
-        } else if (response.status === 400) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || "Validation error: Please check the required fields.");
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || "Error adding the product");
-        }
-      }
-      
       setAddModalOpen(false);
       fetchProducts();
     } catch (err) {
       console.error("Erreur:", err);
-      setError(err.message);
+      let errorMessage = err.message;
+      
+      // Handle specific error messages
+      if (err.message.includes('401')) {
+        errorMessage = "You are not authorized to perform this action. Please log in again.";
+      } else if (err.message.includes('403')) {
+        errorMessage = "You don't have the necessary permissions for this action.";
+      } else if (err.message.includes('400')) {
+        errorMessage = "Validation error: Please check the required fields.";
+      }
+      
+      setError(errorMessage);
     }
   };
 

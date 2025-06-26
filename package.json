@@ -1,5 +1,13 @@
 {
+  "private": true,
+  "workspaces": [
+    "services/*",
+    "client"
+  ],
+  "devDependencies": {
+    "prisma": "^6.10.1"
+  },
   "dependencies": {
-    "recharts": "^2.15.3"
+    "@prisma/client": "^6.8.2"
   }
 }

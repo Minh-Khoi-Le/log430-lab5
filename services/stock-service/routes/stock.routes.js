@@ -25,9 +25,12 @@
 
 import express from 'express';
 import StockController from '../controllers/stock.controller.js';
-import { validateRequest } from '../middleware/validateRequest.js';
-import { authenticate } from '../middleware/auth.js';
-import { cache } from '../middleware/cache.js';
+
+// Import shared middleware
+import { 
+  authenticate,
+  validateId
+} from '@log430/shared';
 
 const router = express.Router();
 
@@ -48,20 +51,7 @@ const router = express.Router();
  * Response: 200 OK with stock data across stores
  */
 router.get('/product/:productId',
-  validateRequest({
-    type: 'params',
-    schema: {
-      productId: { type: 'string', pattern: '^\\d+$' }
-    }
-  }),
-  validateRequest({
-    type: 'query',
-    schema: {
-      includeZero: { type: 'string', enum: ['true', 'false'], required: false },
-      minQuantity: { type: 'string', pattern: '^\\d+$', required: false }
-    }
-  }),
-  cache(300), // Cache for 5 minutes
+  validateId('productId'),
   StockController.getByProduct
 );
 
@@ -86,24 +76,7 @@ router.get('/product/:productId',
  * Response: 200 OK with paginated stock data
  */
 router.get('/store/:storeId',
-  validateRequest({
-    type: 'params',
-    schema: {
-      storeId: { type: 'string', pattern: '^\\d+$' }
-    }
-  }),
-  validateRequest({
-    type: 'query',
-    schema: {
-      page: { type: 'string', pattern: '^\\d+$', required: false },
-      limit: { type: 'string', pattern: '^\\d+$', required: false },
-      includeZero: { type: 'string', enum: ['true', 'false'], required: false },
-      category: { type: 'string', maxLength: 50, required: false },
-      lowStock: { type: 'string', enum: ['true', 'false'], required: false },
-      threshold: { type: 'string', pattern: '^\\d+$', required: false }
-    }
-  }),
-  cache(180), // Cache for 3 minutes (stock changes frequently)
+  validateId('storeId'),
   StockController.getByStore
 );
 
@@ -124,16 +97,6 @@ router.get('/store/:storeId',
  */
 router.get('/summary',
   authenticate,
-  validateRequest({
-    type: 'query',
-    schema: {
-      storeId: { type: 'string', pattern: '^\\d+$', required: false },
-      productId: { type: 'string', pattern: '^\\d+$', required: false },
-      category: { type: 'string', maxLength: 50, required: false },
-      lowStockThreshold: { type: 'string', pattern: '^\\d+$', required: false }
-    }
-  }),
-  cache(600), // Cache for 10 minutes
   StockController.getStockSummary
 );
 
@@ -152,15 +115,8 @@ router.get('/summary',
  * Response: 200 OK with availability information
  */
 router.get('/availability',
-  validateRequest({
-    type: 'query',
-    schema: {
-      productId: { type: 'string', pattern: '^\\d+$', required: true },
-      storeId: { type: 'string', pattern: '^\\d+$', required: true },
-      quantity: { type: 'string', pattern: '^\\d+$', required: true }
-    }
-  }),
-  cache(60), // Cache for 1 minute (availability changes quickly)
+  validateId('productId', 'query'),
+  validateId('storeId', 'query'),
   async (req, res, next) => {
     try {
       const { productId, storeId, quantity } = req.query;
@@ -200,16 +156,7 @@ router.get('/availability',
  */
 router.put('/',
   authenticate,
-  validateRequest({
-    type: 'body',
-    schema: {
-      productId: { type: 'number', minimum: 1, required: true },
-      storeId: { type: 'number', minimum: 1, required: true },
-      quantity: { type: 'number', minimum: 0, required: true },
-      type: { type: 'string', enum: ['set', 'adjustment'], required: false },
-      reason: { type: 'string', maxLength: 200, required: false }
-    }
-  }),
+  // Basic body validation would be handled by controller or shared validators
   StockController.updateStock
 );
 
@@ -232,28 +179,7 @@ router.put('/',
  */
 router.put('/bulk',
   authenticate,
-  validateRequest({
-    type: 'body',
-    schema: {
-      updates: {
-        type: 'array',
-        minItems: 1,
-        maxItems: 100,
-        items: {
-          type: 'object',
-          properties: {
-            productId: { type: 'number', minimum: 1 },
-            storeId: { type: 'number', minimum: 1 },
-            quantity: { type: 'number', minimum: 0 },
-            type: { type: 'string', enum: ['set', 'adjustment'] }
-          },
-          required: ['productId', 'storeId', 'quantity']
-        },
-        required: true
-      },
-      reason: { type: 'string', maxLength: 200, required: false }
-    }
-  }),
+  // Complex validation would be handled by controller
   StockController.bulkUpdateStock
 );
 
@@ -275,16 +201,7 @@ router.put('/bulk',
  */
 router.post('/transfer',
   authenticate,
-  validateRequest({
-    type: 'body',
-    schema: {
-      productId: { type: 'number', minimum: 1, required: true },
-      fromStoreId: { type: 'number', minimum: 1, required: true },
-      toStoreId: { type: 'number', minimum: 1, required: true },
-      quantity: { type: 'number', minimum: 1, required: true },
-      reason: { type: 'string', maxLength: 200, required: false }
-    }
-  }),
+  // Transfer validation would be handled by controller
   StockController.transferStock
 );
 

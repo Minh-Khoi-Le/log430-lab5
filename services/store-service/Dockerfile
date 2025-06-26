@@ -1,77 +1,44 @@
-# Store Service Dockerfile
-# 
-# This Dockerfile creates a production-ready container for the Store Service
-# microservice. It follows Node.js best practices for containerization including
-# multi-stage builds, non-root user execution, and minimal attack surface.
-#
-# Build stages:
-# 1. Dependencies: Install and cache dependencies
-# 2. Production: Create final production image
-#
-# Features:
-# - Multi-stage build for smaller final image
-# - Non-root user for security
-# - Health check endpoint
-# - Proper signal handling
-# - Optimized layer caching
+FROM node:18-alpine
 
-# Build stage: Install dependencies
-FROM node:18-alpine AS dependencies
+# Create a non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files for dependency installation
-COPY package*.json ./
+# Copy package.json files first to leverage Docker caching
+COPY ./services/shared/package.json ./services/shared/
+COPY ./services/store-service/package.json ./services/store-service/
+COPY ./fix-shared-modules.js .
 
-# Install production dependencies only
-# Use npm ci for faster, reliable, reproducible builds
-RUN npm ci --only=production && npm cache clean --force
+# Run the fix script to create proper export wrappers for shared modules
+RUN node fix-shared-modules.js
 
-# Production stage: Create final image
-FROM node:18-alpine AS production
+# Install dependencies for shared module first
+WORKDIR /app/services/shared
+RUN npm install
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install dependencies for the service
+WORKDIR /app/services/store-service
+RUN npm install
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodegroup && \
-    adduser -S nodeuser -u 1001 -G nodegroup
+# Copy the rest of the application code
+COPY ./services/shared /app/services/shared
+COPY ./services/store-service /app/services/store-service
+COPY ./prisma /app/prisma
 
-# Set working directory
+# Generate Prisma client
 WORKDIR /app
+RUN npm install -g prisma@5.14.0 && npx prisma generate
 
-# Copy dependencies from build stage
-COPY --from=dependencies /app/node_modules ./node_modules
+# Set the working directory to the service's folder
+WORKDIR /app/services/store-service
 
-# Copy application source code
-COPY --chown=nodeuser:nodegroup . .
+# Switch to the non-root user
+USER nodejs
 
-# Create necessary directories with proper permissions
-RUN mkdir -p /app/logs && \
-    chown -R nodeuser:nodegroup /app
+# Expose the port for the service
+EXPOSE 3003
 
-# Switch to non-root user
-USER nodeuser
-
-# Expose the service port
-EXPOSE 3002
-
-# Add health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node healthcheck.js || exit 1
-
-# Set production environment
-ENV NODE_ENV=production
-
-# Use dumb-init to handle signals properly
-ENTRYPOINT ["dumb-init", "--"]
-
-# Start the application
-CMD ["node", "server.js"]
-
-# Metadata labels
-LABEL maintainer="Store Service Team" \
-      version="1.0.0" \
-      description="Store Service - Microservice for store management operations" \
-      service="store-service"
+# Start the service
+CMD ["node", "server.js"] 

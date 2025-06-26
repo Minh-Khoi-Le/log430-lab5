@@ -39,6 +39,18 @@ import AssessmentIcon from "@mui/icons-material/Assessment";
 import CloseIcon from "@mui/icons-material/Close";
 import RefundIcon from '@mui/icons-material/AssignmentReturn';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer } from "recharts";
+import { API_CONFIG } from '../api';
+
+// Helper function for API calls with authentication
+const fetchWithAuth = async (url) => {
+  const response = await fetch(url, {
+    headers: API_CONFIG.headers,
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  return response.json();
+};
 
 const Dashboard = () => {
   // State to store statistics data from API
@@ -60,18 +72,16 @@ const Dashboard = () => {
 
   // Fetch store statistics when component mounts
   useEffect(() => {
-    // API call to get store statistics
-    fetch("http://localhost:3000/api/v1/maisonmere/stats")
-      .then((res) => res.json())
+    // API call to get store statistics via API Gateway
+    fetchWithAuth("http://localhost:8000/api/maisonmere/stats")
       .then((data) => setStats(data))
       .catch((err) => {
         console.error("Error fetching stats:", err);
         setStats([]);
       });
     
-    // API call to get refund statistics
-    fetch("http://localhost:3000/api/v1/maisonmere/refund-stats")
-      .then((res) => res.json())
+    // API call to get refund statistics via API Gateway
+    fetchWithAuth("http://localhost:8000/api/maisonmere/refund-stats")
       .then((data) => setRefundStats(data))
       .catch((err) => {
         console.error("Error fetching refund stats:", err);
@@ -113,15 +123,9 @@ const Dashboard = () => {
     setError("");
     
     try {
-      const response = await fetch(
-        `http://localhost:3000/api/v1/maisonmere/consolidated-sales?startDate=${startDate}&endDate=${endDate}`
+      const data = await fetchWithAuth(
+        `http://localhost:8000/api/maisonmere/consolidated-sales?startDate=${startDate}&endDate=${endDate}`
       );
-      
-      if (!response.ok) {
-        throw new Error("Error retrieving data");
-      }
-      
-      const data = await response.json();
       setReportData(data);
       setPage(0);
     } catch (err) {

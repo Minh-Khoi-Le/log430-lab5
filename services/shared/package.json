@@ -1,5 +1,5 @@
 {
-  "name": "@multistore/shared",
+  "name": "@log430/shared",
   "version": "1.0.0",
   "description": "Shared utilities and middleware for multi-store microservices",
   "main": "index.js",

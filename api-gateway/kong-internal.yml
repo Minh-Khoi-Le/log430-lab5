@@ -1,0 +1,271 @@
+# Kong Internal Gateway Configuration for Service-to-Service Communication
+# Phase 4.2 - Inter-service Authentication and Security
+
+_format_version: "3.0"
+_transform: true
+
+# Internal Services - Service-to-Service Communication
+services:
+  # Internal Product Service Communication
+  - name: internal-product-service
+    url: http://product-service:3001
+    tags:
+      - internal
+      - product
+      - service-to-service
+    
+  # Internal User Service Communication  
+  - name: internal-user-service
+    url: http://user-service:3002
+    tags:
+      - internal
+      - user
+      - service-to-service
+    
+  # Internal Store Service Communication
+  - name: internal-store-service
+    url: http://store-service:3003
+    tags:
+      - internal
+      - store
+      - service-to-service
+    
+  # Internal Stock Service Communication
+  - name: internal-stock-service
+    host: stock-service-upstream
+    tags:
+      - internal
+      - stock
+      - service-to-service
+      - load-balanced
+    
+  # Internal Sales Service Communication
+  - name: internal-sales-service
+    url: http://sales-service:3005
+    tags:
+      - internal
+      - sales
+      - service-to-service
+    
+  # Internal Refund Service Communication
+  - name: internal-refund-service
+    url: http://refund-service:3006
+    tags:
+      - internal
+      - refund
+      - service-to-service
+    
+  # Internal Cart Service Communication
+  - name: internal-cart-service
+    host: cart-service-upstream
+    tags:
+      - internal
+      - cart
+      - service-to-service
+      - load-balanced
+
+# Internal Routes - Service-to-Service API Access
+routes:
+  # Internal Product Service Routes
+  - name: internal-product-routes
+    service:
+      name: internal-product-service
+    paths:
+      - /internal/products
+    strip_path: true
+    preserve_host: false
+    
+  # Internal User Service Routes
+  - name: internal-user-routes
+    service:
+      name: internal-user-service
+    paths:
+      - /internal/users
+    strip_path: true
+    preserve_host: false
+    
+  # Internal Store Service Routes
+  - name: internal-store-routes
+    service:
+      name: internal-store-service
+    paths:
+      - /internal/stores
+    strip_path: true
+    preserve_host: false
+    
+  # Internal Stock Service Routes
+  - name: internal-stock-routes
+    service:
+      name: internal-stock-service
+    paths:
+      - /internal/stock
+    strip_path: true
+    preserve_host: false
+    
+  # Internal Sales Service Routes
+  - name: internal-sales-routes
+    service:
+      name: internal-sales-service
+    paths:
+      - /internal/sales
+    strip_path: true
+    preserve_host: false
+    
+  # Internal Refund Service Routes
+  - name: internal-refund-routes
+    service:
+      name: internal-refund-service
+    paths:
+      - /internal/refunds
+    strip_path: true
+    preserve_host: false
+    
+  # Internal Cart Service Routes
+  - name: internal-cart-routes
+    service:
+      name: internal-cart-service
+    paths:
+      - /internal/cart
+    strip_path: true
+    preserve_host: false
+
+# Internal Security Plugins
+plugins:
+  # Service-to-Service Authentication
+  - name: key-auth
+    config:
+      key_names:
+        - "X-Service-Token"
+        - "X-Internal-API-Key"
+      key_in_header: true
+      key_in_query: false
+      key_in_body: false
+      hide_credentials: true
+      
+  # IP Restriction for Internal Network Only
+  - name: ip-restriction
+    config:
+      allow:
+        - "10.0.0.0/8"           # Internal Docker networks
+        - "172.16.0.0/12"        # Docker bridge networks
+        - "192.168.0.0/16"       # Local networks
+        - "127.0.0.1"            # Localhost
+      deny: []
+      
+  # Request/Response Transformation for Internal APIs
+  - name: request-transformer
+    config:
+      add:
+        headers:
+          - "X-Internal-Gateway: kong-internal"
+          - "X-Service-Call: true"
+          - "X-Request-ID: $(request_id)"
+          - "X-Call-Time: $(date_utc)"
+      remove:
+        headers:
+          - "X-Forwarded-For"
+          - "X-Real-IP"
+      rename:
+        headers:
+          - "X-Service-Token: X-API-Key"
+          
+  # Response Transformer for Internal APIs
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Internal-Response: true"
+          - "X-Service-Version: 1.0"
+          - "X-Response-Gateway: kong-internal"
+      remove:
+        headers:
+          - "Server"
+          - "X-Powered-By"
+          
+  # Rate Limiting for Service-to-Service (Higher limits)
+  - name: rate-limiting
+    config:
+      minute: 1000     # Higher limits for internal services
+      hour: 10000
+      day: 100000
+      policy: local
+      hide_client_headers: false
+      
+  # Request Size Limiting
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 50  # 50MB for internal data transfers
+      
+  # Prometheus Metrics for Internal Services
+  - name: prometheus
+    config:
+      per_consumer: true
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+      
+  # Correlation ID Plugin for Tracing
+  - name: correlation-id
+    config:
+      header_name: "X-Correlation-ID"
+      generator: "uuid"
+      echo_downstream: true
+
+# Internal Service Consumers
+consumers:
+  # Product Service Consumer
+  - username: product-service-internal
+    tags:
+      - internal-service
+      - product
+    keyauth_credentials:
+      - key: product-service-internal-token-12345
+    
+  # User Service Consumer
+  - username: user-service-internal
+    tags:
+      - internal-service
+      - user
+    keyauth_credentials:
+      - key: user-service-internal-token-67890
+    
+  # Store Service Consumer
+  - username: store-service-internal
+    tags:
+      - internal-service
+      - store
+    keyauth_credentials:
+      - key: store-service-internal-token-abcde
+    
+  # Stock Service Consumer
+  - username: stock-service-internal
+    tags:
+      - internal-service
+      - stock
+    keyauth_credentials:
+      - key: stock-service-internal-token-fghij
+    
+  # Sales Service Consumer
+  - username: sales-service-internal
+    tags:
+      - internal-service
+      - sales
+    keyauth_credentials:
+      - key: sales-service-internal-token-klmno
+    
+  # Refund Service Consumer
+  - username: refund-service-internal
+    tags:
+      - internal-service
+      - refund
+    keyauth_credentials:
+      - key: refund-service-internal-token-pqrst
+    
+  # Cart Service Consumer
+  - username: cart-service-internal
+    tags:
+      - internal-service
+      - cart
+    keyauth_credentials:
+      - key: cart-service-internal-token-uvwxy

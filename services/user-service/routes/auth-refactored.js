@@ -14,8 +14,6 @@ import { PrismaClient } from '@prisma/client';
 // Import shared components
 import {
   logger,
-  recordOperation,
-  recordDatabaseOperation,
   validate,
   validateEmail,
   validatePassword,
@@ -80,10 +78,8 @@ router.post('/login',
       const user = await prisma.user.findUnique({
         where: { email }
       });
-      recordDatabaseOperation('SELECT', 'users', Date.now() - dbStart);
 
       if (!user) {
-        recordOperation('user_login', 'failed');
         logger.warn('Login failed - user not found', { email });
         throw new UnauthorizedError('Invalid email or password');
       }
@@ -92,7 +88,6 @@ router.post('/login',
       const isPasswordValid = await comparePassword(password, user.password);
       
       if (!isPasswordValid) {
-        recordOperation('user_login', 'failed');
         logger.warn('Login failed - invalid password', { email, userId: user.id });
         throw new UnauthorizedError('Invalid email or password');
       }
@@ -110,10 +105,6 @@ router.post('/login',
           updatedAt: new Date()
         }
       });
-      recordDatabaseOperation('UPDATE', 'users', Date.now() - updateStart);
-
-      // Record successful login
-      recordOperation('user_login', 'success', Date.now() - startTime);
       
       logger.info('User login successful', { 
         userId: user.id, 
@@ -139,7 +130,6 @@ router.post('/login',
       });
 
     } catch (error) {
-      recordOperation('user_login', 'failed');
       throw error;
     }
   })
@@ -163,10 +153,8 @@ router.post('/register',
       const existingUser = await prisma.user.findUnique({
         where: { email }
       });
-      recordDatabaseOperation('SELECT', 'users', Date.now() - dbStart);
 
       if (existingUser) {
-        recordOperation('user_registration', 'failed');
         logger.warn('Registration failed - email already exists', { email });
         throw new ConflictError('Email already registered');
       }
@@ -187,14 +175,10 @@ router.post('/register',
           updatedAt: new Date()
         }
       });
-      recordDatabaseOperation('INSERT', 'users', Date.now() - createStart);
-
+      
       // Generate tokens
       const accessToken = generateAccessToken(newUser);
       const refreshToken = generateRefreshToken(newUser);
-
-      // Record successful registration
-      recordOperation('user_registration', 'success', Date.now() - startTime);
       
       logger.info('User registration successful', {
         userId: newUser.id,
@@ -217,7 +201,6 @@ router.post('/register',
       });
 
     } catch (error) {
-      recordOperation('user_registration', 'failed');
       throw error;
     }
   })
@@ -242,7 +225,6 @@ router.post('/refresh',
       const decoded = verifyToken(refreshToken);
       
       if (decoded.type !== 'refresh') {
-        recordOperation('token_refresh', 'failed');
         throw new UnauthorizedError('Invalid token type');
       }
 
@@ -251,18 +233,14 @@ router.post('/refresh',
       const user = await prisma.user.findUnique({
         where: { id: decoded.id }
       });
-      recordDatabaseOperation('SELECT', 'users', Date.now() - dbStart);
 
       if (!user) {
-        recordOperation('token_refresh', 'failed');
         throw new NotFoundError('User not found');
       }
 
       // Generate new tokens
       const newAccessToken = generateAccessToken(user);
       const newRefreshToken = generateRefreshToken(user);
-
-      recordOperation('token_refresh', 'success', Date.now() - startTime);
       
       logger.info('Token refresh successful', {
         userId: user.id,
@@ -280,7 +258,6 @@ router.post('/refresh',
       });
 
     } catch (error) {
-      recordOperation('token_refresh', 'failed');
       throw error;
     }
   })
@@ -294,8 +271,6 @@ router.post('/logout',
   authenticate,
   asyncHandler(async (req, res) => {
     const startTime = Date.now();
-    
-    recordOperation('user_logout', 'success', Date.now() - startTime);
     
     logger.info('User logout', {
       userId: req.user.id,
@@ -336,13 +311,12 @@ router.get('/me',
           lastLoginAt: true
         }
       });
-      recordDatabaseOperation('SELECT', 'users', Date.now() - dbStart);
 
       if (!user) {
         throw new NotFoundError('User not found');
       }
 
-      recordOperation('get_current_user', 'success', Date.now() - startTime);
+      logger.info('get_current_user', 'success', Date.now() - startTime);
 
       res.json({
         success: true,
@@ -350,7 +324,7 @@ router.get('/me',
       });
 
     } catch (error) {
-      recordOperation('get_current_user', 'failed');
+      logger.info('get_current_user', 'failed');
       throw error;
     }
   })

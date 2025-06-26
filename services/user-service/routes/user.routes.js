@@ -16,17 +16,15 @@ import { body, param, query, validationResult } from 'express-validator';
 import { PrismaClient } from '@prisma/client';
 import { 
   authenticate, 
-  requireManager, 
-  selfOrManager 
-} from '../middleware/auth.js';
-import { recordUserOperation } from '../middleware/metrics.js';
-import { logger } from '../utils/logger.js';
+  requireManager 
+} from '@log430/shared/middleware/auth.js';
+import { logger } from '@log430/shared/utils/logger.js';
 import { 
   ValidationError, 
   NotFoundError,
   ConflictError,
   asyncHandler 
-} from '../middleware/errorHandler.js';
+} from '@log430/shared/middleware/errorHandler.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -113,8 +111,6 @@ router.get('/profile',
       throw new NotFoundError('User not found');
     }
     
-    recordUserOperation('profile_view', 'success');
-    
     logger.info('User profile retrieved', { 
       userId: user.id, 
       email: user.email 
@@ -155,7 +151,6 @@ router.put('/profile',
         });
         
         if (existingUser) {
-          recordUserOperation('profile_update', 'failure');
           throw new ConflictError('Email already in use');
         }
       }
@@ -181,8 +176,6 @@ router.put('/profile',
           lastLoginAt: true
         }
       });
-      
-      recordUserOperation('profile_update', 'success');
       
       logger.info('Profile updated successfully', { 
         userId, 
@@ -360,7 +353,6 @@ router.get('/:userId',
   authenticate,
   userIdValidation,
   handleValidationErrors,
-  selfOrManager(),
   asyncHandler(async (req, res) => {
     const { userId } = req.params;
     
