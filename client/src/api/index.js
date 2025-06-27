@@ -1,5 +1,5 @@
 // Base URL for all API requests - Updated for API Gateway
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 // API Gateway configuration
 export const API_CONFIG = {
@@ -95,12 +95,43 @@ export async function apiFetch(path, options = {}, token = null) {
     },
   };
 
-  const res = await fetch(`${API_BASE}${path}`, config);
-  if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`API Error ${res.status}: ${errorText}`);
+  const fullUrl = `${API_BASE}${path}`;
+
+  try {
+    const res = await fetch(fullUrl, config);
+    
+    if (!res.ok) {
+      let errorText;
+      try {
+        errorText = await res.text();
+      } catch {
+        errorText = `HTTP ${res.status} ${res.statusText}`;
+      }
+      throw new Error(`API Error ${res.status}: ${errorText}`);
+    }
+    
+    const contentType = res.headers.get('content-type');
+    if (contentType?.includes('application/json')) {
+      const jsonResponse = await res.json();
+      // Handle structured error responses
+      if (!res.ok && jsonResponse.success === false) {
+        throw new Error(`API Error ${res.status}: ${jsonResponse.message || jsonResponse.error || 'Unknown error'}`);
+      }
+      return jsonResponse;
+    } else {
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`API Error ${res.status}: ${text || res.statusText}`);
+      }
+      throw new Error(`API Error 502: An invalid response was received from the upstream server, request_id: "${text}"`);
+    }
+  } catch (error) {
+    console.error('API Fetch Error:', {
+      url: fullUrl,
+      error: error.message
+    });
+    throw error;
   }
-  return res.json();
 }
 
 /**

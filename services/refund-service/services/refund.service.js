@@ -13,16 +13,17 @@
  * - Comprehensive audit logging
  * 
  * @author Refund Service Team
- * @version 1.0.0
+ * @version 2.0.0
  */
 
-import { PrismaClient } from '@prisma/client';
-import { BaseError } from '@log430/shared/middleware/errorHandler.js';
-import logger from '../utils/logger.js';
-import { getRedisClient } from '../utils/redis.js';
+import { 
+  getDatabaseClient, 
+  executeTransaction,
+  BaseError,
+  logger,
+  redisClient
+} from '../../shared/index.js';
 import axios from 'axios';
-
-const prisma = new PrismaClient();
 
 /**
  * Refund Service Class
@@ -30,6 +31,14 @@ const prisma = new PrismaClient();
  * Encapsulates all business logic for refund operations
  */
 class RefundService {
+  
+  /**
+   * Get database client instance
+   * @returns {PrismaClient} Database client
+   */
+  static getPrisma() {
+    return getDatabaseClient('refund-service');
+  }
   
   /**
    * Create a new refund request
@@ -71,7 +80,7 @@ class RefundService {
       this.validateRefundAmounts(refundData, calculatedAmounts);
 
       // Create the refund request
-      const refund = await prisma.$transaction(async (tx) => {
+      const refund = await executeTransaction(async (tx) => {
         // Create the main refund record
         const newRefund = await tx.refund.create({
           data: {
@@ -157,11 +166,11 @@ class RefundService {
         duration: timer.getDuration()
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to create refund request', 'REFUND_CREATION_FAILED');
+      throw new BaseError('Failed to create refund request', 500, 'REFUND_CREATION_FAILED');
     }
   }
 
@@ -195,13 +204,13 @@ class RefundService {
       };
 
       // Get total count
-      const totalCount = await prisma.refund.count({ where });
+      const totalCount = await RefundService.getPrisma().refund.count({ where });
 
       // Get paginated results
       const { page = 1, limit = 50 } = pagination;
       const offset = (page - 1) * limit;
 
-      const refunds = await prisma.refund.findMany({
+      const refunds = await RefundService.getPrisma().refund.findMany({
         where,
         include: {
           sale: {
@@ -296,7 +305,7 @@ class RefundService {
         duration: timer.getDuration()
       });
       
-      throw new ApiError(500, 'Failed to retrieve refunds data', 'REFUNDS_RETRIEVAL_FAILED');
+      throw new BaseError('Failed to retrieve refunds data', 500, 'REFUNDS_RETRIEVAL_FAILED');
     }
   }
 
@@ -318,7 +327,7 @@ class RefundService {
         return cachedRefund;
       }
 
-      const refund = await prisma.refund.findUnique({
+      const refund = await RefundService.getPrisma().refund.findUnique({
         where: { id: refundId },
         include: {
           sale: {
@@ -400,7 +409,7 @@ class RefundService {
       });
 
       if (!refund) {
-        throw new ApiError(404, 'Refund not found', 'REFUND_NOT_FOUND');
+        throw new BaseError('Refund not found', 404, 'REFUND_NOT_FOUND');
       }
 
       // Cache for 10 minutes
@@ -422,11 +431,11 @@ class RefundService {
         duration: timer.getDuration()
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to retrieve refund', 'REFUND_RETRIEVAL_FAILED');
+      throw new BaseError('Failed to retrieve refund', 500, 'REFUND_RETRIEVAL_FAILED');
     }
   }
 
@@ -446,7 +455,7 @@ class RefundService {
       const validStatuses = ['PENDING', 'APPROVED', 'REJECTED', 'COMPLETED', 'CANCELLED'];
       
       if (!validStatuses.includes(status)) {
-        throw new ApiError(400, 'Invalid refund status', 'INVALID_STATUS');
+        throw new BaseError('Invalid refund status', 400, 'INVALID_STATUS');
       }
 
       // Get current refund
@@ -456,7 +465,7 @@ class RefundService {
       this.validateStatusTransition(currentRefund.status, status);
 
       // Update refund in transaction
-      const refund = await prisma.$transaction(async (tx) => {
+      const refund = await executeTransaction(async (tx) => {
         // Update main refund record
         const updatedRefund = await tx.refund.update({
           where: { id: refundId },
@@ -510,11 +519,11 @@ class RefundService {
         duration: timer.getDuration()
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to update refund status', 'STATUS_UPDATE_FAILED');
+      throw new BaseError('Failed to update refund status', 500, 'STATUS_UPDATE_FAILED');
     }
   }
 
@@ -532,11 +541,11 @@ class RefundService {
       const refund = await this.getRefundById(refundId);
 
       if (refund.status !== 'APPROVED') {
-        throw new ApiError(400, 'Refund must be approved before processing', 'REFUND_NOT_APPROVED');
+        throw new BaseError('Refund must be approved before processing', 400, 'REFUND_NOT_APPROVED');
       }
 
       // Process the refund
-      const processedRefund = await prisma.$transaction(async (tx) => {
+      const processedRefund = await executeTransaction(async (tx) => {
         // Update refund with processing details
         const updated = await tx.refund.update({
           where: { id: refundId },
@@ -599,11 +608,11 @@ class RefundService {
         duration: timer.getDuration()
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to process refund', 'REFUND_PROCESSING_FAILED');
+      throw new BaseError('Failed to process refund', 500, 'REFUND_PROCESSING_FAILED');
     }
   }
 
@@ -639,19 +648,19 @@ class RefundService {
 
       // Get basic analytics
       const [totalRefunds, refundCount, avgRefundAmount] = await Promise.all([
-        prisma.refund.aggregate({
+        RefundService.getPrisma().refund.aggregate({
           where: whereClause,
           _sum: { amount: true }
         }),
-        prisma.refund.count({ where: whereClause }),
-        prisma.refund.aggregate({
+        RefundService.getPrisma().refund.count({ where: whereClause }),
+        RefundService.getPrisma().refund.aggregate({
           where: whereClause,
           _avg: { amount: true }
         })
       ]);
 
       // Get refunds by status
-      const refundsByStatus = await prisma.refund.groupBy({
+      const refundsByStatus = await RefundService.getPrisma().refund.groupBy({
         by: ['status'],
         where: whereClause,
         _sum: { amount: true },
@@ -659,7 +668,7 @@ class RefundService {
       });
 
       // Get refunds by reason
-      const refundsByReason = await prisma.refund.groupBy({
+      const refundsByReason = await RefundService.getPrisma().refund.groupBy({
         by: ['reason'],
         where: whereClause,
         _sum: { amount: true },
@@ -705,7 +714,7 @@ class RefundService {
         duration: timer.getDuration()
       });
       
-      throw new ApiError(500, 'Failed to generate refund analytics', 'ANALYTICS_GENERATION_FAILED');
+      throw new BaseError('Failed to generate refund analytics', 500, 'ANALYTICS_GENERATION_FAILED');
     }
   }
 
@@ -719,20 +728,20 @@ class RefundService {
     const missing = required.filter(field => !refundData[field]);
     
     if (missing.length > 0) {
-      throw new ApiError(400, `Missing required fields: ${missing.join(', ')}`, 'VALIDATION_ERROR');
+      throw new BaseError(`Missing required fields: ${missing.join(', 400, ')}`, 'VALIDATION_ERROR');
     }
 
     if (refundData.amount <= 0) {
-      throw new ApiError(400, 'Refund amount must be greater than zero', 'VALIDATION_ERROR');
+      throw new BaseError('Refund amount must be greater than zero', 400, 'VALIDATION_ERROR');
     }
 
     const validTypes = ['FULL', 'PARTIAL', 'EXCHANGE'];
     if (!validTypes.includes(refundData.refundType)) {
-      throw new ApiError(400, 'Invalid refund type', 'VALIDATION_ERROR');
+      throw new BaseError('Invalid refund type', 400, 'VALIDATION_ERROR');
     }
 
     if (refundData.refundType === 'PARTIAL' && (!refundData.items || refundData.items.length === 0)) {
-      throw new ApiError(400, 'Partial refunds must specify items', 'VALIDATION_ERROR');
+      throw new BaseError('Partial refunds must specify items', 400, 'VALIDATION_ERROR');
     }
   }
 
@@ -740,7 +749,7 @@ class RefundService {
    * Get original sale details
    */
   async getOriginalSale(saleId) {
-    const sale = await prisma.sale.findUnique({
+    const sale = await RefundService.getPrisma().sale.findUnique({
       where: { id: saleId },
       include: {
         items: {
@@ -753,7 +762,7 @@ class RefundService {
     });
 
     if (!sale) {
-      throw new ApiError(404, 'Original sale not found', 'SALE_NOT_FOUND');
+      throw new BaseError('Original sale not found', 404, 'SALE_NOT_FOUND');
     }
 
     return sale;
@@ -765,7 +774,7 @@ class RefundService {
   async validateRefundEligibility(sale, refundData) {
     // Check if sale is eligible for refund
     if (sale.status === 'CANCELLED') {
-      throw new ApiError(400, 'Cannot refund a cancelled sale', 'REFUND_NOT_ALLOWED');
+      throw new BaseError('Cannot refund a cancelled sale', 400, 'REFUND_NOT_ALLOWED');
     }
 
     // Check refund time limits (e.g., 30 days)
@@ -773,7 +782,7 @@ class RefundService {
     refundCutoff.setDate(refundCutoff.getDate() - 30);
     
     if (sale.saleDate < refundCutoff) {
-      throw new ApiError(400, 'Sale is too old for refund (30 day limit)', 'REFUND_EXPIRED');
+      throw new BaseError('Sale is too old for refund (30 day limit)', 400, 'REFUND_EXPIRED');
     }
 
     // Check if already fully refunded
@@ -782,13 +791,13 @@ class RefundService {
       .reduce((sum, r) => sum + r.amount, 0);
 
     if (totalRefunded >= sale.totalAmount) {
-      throw new ApiError(400, 'Sale has already been fully refunded', 'ALREADY_REFUNDED');
+      throw new BaseError('Sale has already been fully refunded', 400, 'ALREADY_REFUNDED');
     }
 
     // Check if requested amount would exceed remaining refundable amount
     const remainingRefundable = sale.totalAmount - totalRefunded;
     if (refundData.amount > remainingRefundable) {
-      throw new ApiError(400, 
+      throw new BaseError(400, 
         `Refund amount exceeds remaining refundable amount. Available: ${remainingRefundable}`, 
         'REFUND_AMOUNT_EXCEEDED'
       );
@@ -831,7 +840,7 @@ class RefundService {
     const tolerance = 0.01; // 1 cent tolerance
     
     if (Math.abs(refundData.amount - calculated.amount) > tolerance) {
-      throw new ApiError(400, 'Refund amount does not match calculated total', 'AMOUNT_MISMATCH');
+      throw new BaseError('Refund amount does not match calculated total', 400, 'AMOUNT_MISMATCH');
     }
   }
 
@@ -880,7 +889,7 @@ class RefundService {
     };
 
     if (!validTransitions[currentStatus]?.includes(newStatus)) {
-      throw new ApiError(400, 
+      throw new BaseError(400, 
         `Invalid status transition from ${currentStatus} to ${newStatus}`, 
         'INVALID_STATUS_TRANSITION'
       );
@@ -957,14 +966,14 @@ class RefundService {
   async updateSaleRefundStatus(saleId, refund) {
     try {
       // Get all refunds for this sale
-      const saleRefunds = await prisma.refund.findMany({
+      const saleRefunds = await RefundService.getPrisma().refund.findMany({
         where: { saleId, status: 'COMPLETED' }
       });
 
       const totalRefunded = saleRefunds.reduce((sum, r) => sum + r.amount, 0);
       
       // Get original sale
-      const sale = await prisma.sale.findUnique({
+      const sale = await RefundService.getPrisma().sale.findUnique({
         where: { id: saleId }
       });
 
@@ -1057,7 +1066,7 @@ class RefundService {
    */
   async getTimeBasedRefunds(whereClause, groupBy) {
     // This is a simplified version - in production you'd use proper SQL aggregation
-    const refunds = await prisma.refund.findMany({
+    const refunds = await RefundService.getPrisma().refund.findMany({
       where: whereClause,
       select: {
         requestedAt: true,
@@ -1120,8 +1129,7 @@ class RefundService {
    */
   async getCachedResult(key) {
     try {
-      const redis = getRedisClient();
-      const cached = await redis.get(key);
+      const cached = await redisClient.get(key);
       return cached ? JSON.parse(cached) : null;
     } catch (error) {
       logger.warn('Cache retrieval failed', { key, error: error.message });
@@ -1131,8 +1139,7 @@ class RefundService {
 
   async setCachedResult(key, data, ttl = 300) {
     try {
-      const redis = getRedisClient();
-      await redis.setex(key, ttl, JSON.stringify(data));
+      await redisClient.setex(key, ttl, JSON.stringify(data));
     } catch (error) {
       logger.warn('Cache storage failed', { key, error: error.message });
     }
@@ -1140,7 +1147,6 @@ class RefundService {
 
   async invalidateRelevantCaches(storeId, saleId = null, refundId = null) {
     try {
-      const redis = getRedisClient();
       const patterns = [
         `refunds:store:${storeId}:*`,
         `analytics:refunds:${storeId}:*`
@@ -1155,9 +1161,9 @@ class RefundService {
       }
       
       for (const pattern of patterns) {
-        const keys = await redis.keys(pattern);
+        const keys = await redisClient.keys(pattern);
         if (keys.length > 0) {
-          await redis.del(...keys);
+          await redisClient.del(...keys);
         }
       }
     } catch (error) {

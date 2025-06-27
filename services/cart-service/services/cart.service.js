@@ -5,7 +5,7 @@
  * This service handles cart management, item operations, and checkout processing.
  * 
  * Features:
- * - Redis-based cart persistence for session management
+ * - Database-based cart persistence with Redis caching
  * - Integration with Product and Stock services
  * - Cart validation against stock levels and pricing
  * - Checkout processing with Sales service
@@ -16,11 +16,13 @@
  * @version 1.0.0
  */
 
-import { ApiError } from '../middleware/errorHandler.js';
-import logger from '../utils/logger.js';
-import { getRedisClient } from '../utils/redis.js';
+import { 
+  logger,
+  BaseError 
+} from '../../shared/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
+import { CartDB } from '../utils/cart-db.js';
 
 /**
  * Cart Service Class
@@ -39,11 +41,7 @@ class CartService {
    * Create a new shopping cart
    * 
    * @param {Object} cartData - Cart creation data
-   * @param {number} cartData.storeId - Store ID
-   * @param {number} cartData.customerId - Customer ID (optional)
-   * @param {string} cartData.sessionId - Session ID (optional)
-   * @param {string} cartData.currency - Currency code
-   * @param {Date} cartData.expiresAt - Custom expiration date
+   * @param {number} cartData.userId - User ID (optional)
    * @param {Object} userInfo - User information
    * @returns {Promise<Object>} Created cart
    */
@@ -52,74 +50,30 @@ class CartService {
     
     try {
       logger.info('Creating new cart', {
-        storeId: cartData.storeId,
-        customerId: cartData.customerId,
-        userId: userInfo?.id
+        userId: cartData.userId,
+        userInfo: userInfo?.id
       });
-
-      // Validate required fields
-      this.validateCartData(cartData);
 
       // Generate unique cart ID
       const cartId = uuidv4();
 
-      // Calculate expiration time
-      const expiresAt = cartData.expiresAt || new Date(Date.now() + (this.DEFAULT_EXPIRY * 1000));
-
-      // Create cart object
-      const cart = {
+      // Create cart in database
+      const cart = await CartDB.createCart({
         id: cartId,
-        storeId: cartData.storeId,
-        customerId: cartData.customerId || null,
-        sessionId: cartData.sessionId || null,
-        status: 'ACTIVE',
-        currency: cartData.currency || 'CAD',
-        items: [],
-        subtotal: 0,
-        taxAmount: 0,
-        discountAmount: 0,
-        totalAmount: 0,
-        discountCode: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        expiresAt: expiresAt.toISOString(),
-        metadata: {
-          createdBy: userInfo?.id || 'anonymous',
-          userAgent: 'cart-service',
-          version: '1.0'
-        }
-      };
-
-      // Store cart in Redis
-      await this.saveCart(cart);
-
-      // Add to customer's cart list if customer is specified
-      if (cartData.customerId) {
-        await this.addToCustomerCarts(cartData.customerId, cartId);
-      }
+        userId: cartData.userId || userInfo?.id || null
+      });
 
       logger.info('Cart created successfully', {
-        cartId,
-        storeId: cartData.storeId,
-        customerId: cartData.customerId,
-        duration: timer.getDuration()
+        cartId: cart.id,
+        userId: cart.userId
       });
 
+      timer.done({ message: 'Cart creation completed' });
       return cart;
-
     } catch (error) {
-      logger.error('Error creating cart', {
-        error: error.message,
-        storeId: cartData.storeId,
-        customerId: cartData.customerId,
-        duration: timer.getDuration()
-      });
-      
-      if (error instanceof ApiError) {
-        throw error;
-      }
-      
-      throw new ApiError(500, 'Failed to create cart', 'CART_CREATION_FAILED');
+      timer.done({ message: 'Cart creation failed' });
+      logger.error('Error creating cart', { error: error.message });
+      throw new BaseError('Cart creation failed', 500, error);
     }
   }
 
@@ -133,42 +87,23 @@ class CartService {
     const timer = logger.startTimer();
     
     try {
-      const cart = await this.loadCart(cartId);
+      const cart = await CartDB.getCart(cartId);
       
       if (!cart) {
-        throw new ApiError(404, 'Cart not found', 'CART_NOT_FOUND');
+        throw new BaseError('Cart not found', 404);
       }
-
-      // Check if cart has expired
-      if (new Date(cart.expiresAt) < new Date()) {
-        await this.deleteCart(cartId);
-        throw new ApiError(410, 'Cart has expired', 'CART_EXPIRED');
-      }
-
-      // Enrich items with product details
-      await this.enrichCartItems(cart);
 
       logger.info('Cart retrieved successfully', {
         cartId,
-        itemCount: cart.items.length,
-        totalAmount: cart.totalAmount,
-        duration: timer.getDuration()
+        itemCount: cart.items.length
       });
 
+      timer.done({ message: 'Cart retrieval completed' });
       return cart;
-
     } catch (error) {
-      logger.error('Error retrieving cart', {
-        error: error.message,
-        cartId,
-        duration: timer.getDuration()
-      });
-      
-      if (error instanceof ApiError) {
-        throw error;
-      }
-      
-      throw new ApiError(500, 'Failed to retrieve cart', 'CART_RETRIEVAL_FAILED');
+      timer.done({ message: 'Cart retrieval failed' });
+      logger.error('Error retrieving cart', { cartId, error: error.message });
+      throw error;
     }
   }
 
@@ -183,8 +118,6 @@ class CartService {
    * @returns {Promise<Object>} Updated cart
    */
   async addItem(cartId, itemData) {
-    const timer = logger.startTimer();
-    
     try {
       logger.info('Adding item to cart', {
         cartId,
@@ -198,67 +131,35 @@ class CartService {
       // Load cart
       const cart = await this.getCart(cartId);
 
-      // Get product details
-      const product = await this.getProductDetails(itemData.productId);
-
       // Validate stock availability
       await this.validateStockAvailability(cart.storeId, itemData.productId, itemData.quantity);
 
-      // Check if item already exists in cart
-      const existingItemIndex = cart.items.findIndex(item => 
-        item.productId === itemData.productId &&
-        this.compareCustomizations(item.customizations, itemData.customizations)
-      );
+      // Add item using CartDB
+      await CartDB.addItemToCart(cartId, itemData.productId, itemData.quantity);
 
-      if (existingItemIndex >= 0) {
-        // Update existing item quantity
-        cart.items[existingItemIndex].quantity += itemData.quantity;
-        cart.items[existingItemIndex].totalPrice = 
-          cart.items[existingItemIndex].quantity * cart.items[existingItemIndex].unitPrice;
-      } else {
-        // Add new item
-        const cartItem = {
-          id: uuidv4(),
-          productId: itemData.productId,
-          quantity: itemData.quantity,
-          unitPrice: product.price,
-          totalPrice: itemData.quantity * product.price,
-          customizations: itemData.customizations || [],
-          addedAt: new Date().toISOString()
-        };
-
-        cart.items.push(cartItem);
-      }
-
-      // Recalculate cart totals
-      await this.recalculateCartTotals(cart);
-
-      // Save updated cart
-      await this.saveCart(cart);
+      // Get updated cart
+      const updatedCart = await this.getCart(cartId);
 
       logger.info('Item added to cart successfully', {
         cartId,
         productId: itemData.productId,
-        quantity: itemData.quantity,
-        newTotal: cart.totalAmount,
-        duration: timer.getDuration()
+        quantity: itemData.quantity
       });
 
-      return cart;
+      return updatedCart;
 
     } catch (error) {
       logger.error('Error adding item to cart', {
         error: error.message,
         cartId,
-        productId: itemData.productId,
-        duration: timer.getDuration()
+        productId: itemData.productId
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to add item to cart', 'ITEM_ADD_FAILED');
+      throw new BaseError('Failed to add item to cart', 500, error);
     }
   }
 
@@ -271,8 +172,6 @@ class CartService {
    * @returns {Promise<Object>} Updated cart
    */
   async updateItem(cartId, productId, quantity) {
-    const timer = logger.startTimer();
-    
     try {
       logger.info('Updating cart item', {
         cartId,
@@ -281,61 +180,40 @@ class CartService {
       });
 
       if (quantity < 0) {
-        throw new ApiError(400, 'Quantity cannot be negative', 'INVALID_QUANTITY');
+        throw new BaseError('Quantity cannot be negative', 400);
       }
 
-      // Load cart
-      const cart = await this.getCart(cartId);
-
-      // Find item
-      const itemIndex = cart.items.findIndex(item => item.productId === productId);
-      
-      if (itemIndex === -1) {
-        throw new ApiError(404, 'Item not found in cart', 'ITEM_NOT_FOUND');
+      // Validate stock availability for new quantity
+      if (quantity > 0) {
+        await this.validateStockAvailability(null, productId, quantity);
       }
 
-      if (quantity === 0) {
-        // Remove item if quantity is 0
-        cart.items.splice(itemIndex, 1);
-      } else {
-        // Validate stock availability for new quantity
-        await this.validateStockAvailability(cart.storeId, productId, quantity);
+      // Update item using CartDB
+      await CartDB.updateCartItem(cartId, productId, quantity);
 
-        // Update item
-        cart.items[itemIndex].quantity = quantity;
-        cart.items[itemIndex].totalPrice = quantity * cart.items[itemIndex].unitPrice;
-        cart.items[itemIndex].updatedAt = new Date().toISOString();
-      }
-
-      // Recalculate cart totals
-      await this.recalculateCartTotals(cart);
-
-      // Save updated cart
-      await this.saveCart(cart);
+      // Get updated cart
+      const updatedCart = await this.getCart(cartId);
 
       logger.info('Cart item updated successfully', {
         cartId,
         productId,
-        quantity,
-        newTotal: cart.totalAmount,
-        duration: timer.getDuration()
+        quantity
       });
 
-      return cart;
+      return updatedCart;
 
     } catch (error) {
       logger.error('Error updating cart item', {
         error: error.message,
         cartId,
-        productId,
-        duration: timer.getDuration()
+        productId
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to update cart item', 'ITEM_UPDATE_FAILED');
+      throw new BaseError('Failed to update cart item', 500, error);
     }
   }
 
@@ -357,47 +235,30 @@ class CartService {
    * @returns {Promise<Object>} Cleared cart
    */
   async clearCart(cartId) {
-    const timer = logger.startTimer();
-    
     try {
       logger.info('Clearing cart', { cartId });
 
-      // Load cart
-      const cart = await this.getCart(cartId);
+      // Clear cart using CartDB
+      await CartDB.clearCart(cartId);
 
-      // Clear items
-      cart.items = [];
+      // Get updated cart
+      const updatedCart = await this.getCart(cartId);
 
-      // Reset totals
-      cart.subtotal = 0;
-      cart.taxAmount = 0;
-      cart.totalAmount = 0;
-      cart.discountAmount = 0;
-      cart.discountCode = null;
-      cart.updatedAt = new Date().toISOString();
+      logger.info('Cart cleared successfully', { cartId });
 
-      // Save updated cart
-      await this.saveCart(cart);
-
-      logger.info('Cart cleared successfully', {
-        cartId,
-        duration: timer.getDuration()
-      });
-
-      return cart;
+      return updatedCart;
 
     } catch (error) {
       logger.error('Error clearing cart', {
         error: error.message,
-        cartId,
-        duration: timer.getDuration()
+        cartId
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to clear cart', 'CART_CLEAR_FAILED');
+      throw new BaseError('Failed to clear cart', 500, error);
     }
   }
 
@@ -451,11 +312,11 @@ class CartService {
         duration: timer.getDuration()
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to apply discount', 'DISCOUNT_APPLICATION_FAILED');
+      throw new BaseError('Failed to apply discount', 500, error);
     }
   }
 
@@ -545,11 +406,11 @@ class CartService {
         duration: timer.getDuration()
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to validate cart', 'CART_VALIDATION_FAILED');
+      throw new BaseError('Failed to validate cart', 500, error);
     }
   }
 
@@ -575,15 +436,13 @@ class CartService {
       const cart = await this.getCart(cartId);
       
       if (cart.items.length === 0) {
-        throw new ApiError(400, 'Cannot checkout empty cart', 'EMPTY_CART');
+        throw new BaseError('Cannot checkout empty cart', 400);
       }
 
       // Validate cart contents
       const validation = await this.validateCart(cartId);
       if (!validation.isValid) {
-        throw new ApiError(400, 'Cart validation failed', 'CART_VALIDATION_FAILED', {
-          issues: validation.issues
-        });
+        throw new BaseError('Cart validation failed', 400, validation.issues);
       }
 
       // Create sale through Sales Service
@@ -644,11 +503,11 @@ class CartService {
         duration: timer.getDuration()
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to process checkout', 'CHECKOUT_FAILED');
+      throw new BaseError('Failed to process checkout', 500, error);
     }
   }
 
@@ -714,7 +573,7 @@ class CartService {
         duration: timer.getDuration()
       });
       
-      throw new ApiError(500, 'Failed to retrieve customer carts', 'CUSTOMER_CARTS_RETRIEVAL_FAILED');
+      throw new BaseError('Failed to retrieve customer carts', 500);
     }
   }
 
@@ -733,7 +592,7 @@ class CartService {
       const cart = await this.loadCart(cartId);
       
       if (!cart) {
-        throw new ApiError(404, 'Cart not found', 'CART_NOT_FOUND');
+        throw new BaseError('Cart not found', 404);
       }
 
       const redis = getRedisClient();
@@ -765,11 +624,11 @@ class CartService {
         duration: timer.getDuration()
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to delete cart', 'CART_DELETION_FAILED');
+      throw new BaseError('Failed to delete cart', 500, error);
     }
   }
 
@@ -780,11 +639,11 @@ class CartService {
    */
   validateCartData(cartData) {
     if (!cartData.storeId) {
-      throw new ApiError(400, 'Store ID is required', 'VALIDATION_ERROR');
+      throw new BaseError('Store ID is required', 400);
     }
 
     if (typeof cartData.storeId !== 'number') {
-      throw new ApiError(400, 'Store ID must be a number', 'VALIDATION_ERROR');
+      throw new BaseError('Store ID must be a number', 400);
     }
   }
 
@@ -796,15 +655,15 @@ class CartService {
     const missing = required.filter(field => !itemData[field]);
     
     if (missing.length > 0) {
-      throw new ApiError(400, `Missing required fields: ${missing.join(', ')}`, 'VALIDATION_ERROR');
+      throw new BaseError(`Missing required fields: ${missing.join(', ')}`, 400);
     }
 
     if (itemData.quantity <= 0) {
-      throw new ApiError(400, 'Quantity must be greater than zero', 'VALIDATION_ERROR');
+      throw new BaseError('Quantity must be greater than zero', 400);
     }
 
     if (typeof itemData.productId !== 'number') {
-      throw new ApiError(400, 'Product ID must be a number', 'VALIDATION_ERROR');
+      throw new BaseError('Product ID must be a number', 400);
     }
   }
 
@@ -823,7 +682,7 @@ class CartService {
         cartId,
         error: error.message
       });
-      throw new ApiError(500, 'Failed to load cart', 'CART_LOAD_FAILED');
+      throw new BaseError('Failed to load cart', 500);
     }
   }
 
@@ -849,7 +708,7 @@ class CartService {
         cartId: cart.id,
         error: error.message
       });
-      throw new ApiError(500, 'Failed to save cart', 'CART_SAVE_FAILED');
+      throw new BaseError('Failed to save cart', 500);
     }
   }
 
@@ -900,7 +759,7 @@ class CartService {
         productId,
         error: error.message
       });
-      throw new ApiError(400, 'Product not found or unavailable', 'PRODUCT_NOT_FOUND');
+      throw new BaseError('Product not found or unavailable', 400);
     }
   }
 
@@ -917,13 +776,13 @@ class CartService {
       const stock = response.data.data;
       
       if (stock.quantity < quantity) {
-        throw new ApiError(400, 
+        throw new BaseError(
           `Insufficient stock. Available: ${stock.quantity}, Requested: ${quantity}`, 
-          'INSUFFICIENT_STOCK'
+          400
         );
       }
     } catch (error) {
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
@@ -1038,13 +897,13 @@ class CartService {
     const discount = validDiscounts[discountCode.toUpperCase()];
     
     if (!discount) {
-      throw new ApiError(400, 'Invalid discount code', 'INVALID_DISCOUNT_CODE');
+      throw new BaseError('Invalid discount code', 400);
     }
 
     if (cart.subtotal < discount.minAmount) {
-      throw new ApiError(400, 
+      throw new BaseError(
         `Minimum order amount of $${discount.minAmount} required for this discount`, 
-        'DISCOUNT_MINIMUM_NOT_MET'
+        400
       );
     }
 
@@ -1085,7 +944,7 @@ class CartService {
         saleData,
         error: error.message
       });
-      throw new ApiError(500, 'Failed to create sale', 'SALE_CREATION_FAILED');
+      throw new BaseError('Failed to create sale', 500);
     }
   }
 }

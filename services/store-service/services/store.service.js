@@ -15,10 +15,17 @@
  * @version 1.0.0
  */
 
-import { PrismaClient } from '@prisma/client';
-import { BaseError } from '@log430/shared/middleware/errorHandler.js';
+import { 
+  getDatabaseClient, 
+  executeTransaction,
+  logger,
+  BaseError
+} from '../../shared/index.js';
 
-const prisma = new PrismaClient();
+// Get shared database client
+function getPrisma() {
+  return getDatabaseClient('store-service');
+}
 
 /**
  * Store Service Class
@@ -46,14 +53,13 @@ class StoreService {
       if (search) {
         where.OR = [
           { name: { contains: search, mode: 'insensitive' } },
-          { city: { contains: search, mode: 'insensitive' } },
           { address: { contains: search, mode: 'insensitive' } }
         ];
       }
       
       // Get stores with pagination
       const [stores, total] = await Promise.all([
-        prisma.store.findMany({
+        getPrisma().store.findMany({
           where,
           skip,
           take: limit,
@@ -61,15 +67,10 @@ class StoreService {
           select: {
             id: true,
             name: true,
-            address: true,
-            city: true,
-            phone: true,
-            email: true,
-            createdAt: true,
-            updatedAt: true
+            address: true
           }
         }),
-        prisma.store.count({ where })
+        getPrisma().store.count({ where })
       ]);
       
       return {
@@ -90,17 +91,12 @@ class StoreService {
    */
   static async getStoreById(id) {
     try {
-      const store = await prisma.store.findUnique({
+      const store = await getPrisma().store.findUnique({
         where: { id },
         select: {
           id: true,
           name: true,
-          address: true,
-          city: true,
-          phone: true,
-          email: true,
-          createdAt: true,
-          updatedAt: true
+          address: true
         }
       });
       
@@ -117,43 +113,31 @@ class StoreService {
    * @param {Object} storeData - Store creation data
    * @param {string} storeData.name - Store name
    * @param {string} storeData.address - Store address
-   * @param {string} storeData.city - Store city
-   * @param {string} [storeData.phone] - Store phone number
-   * @param {string} [storeData.email] - Store email
    * @returns {Promise<Object>} Created store
    */
   static async createStore(storeData) {
     try {
-      // Check for duplicate store name in the same city
-      const existingStore = await prisma.store.findFirst({
+      // Check for duplicate store name
+      const existingStore = await getPrisma().store.findFirst({
         where: {
-          name: storeData.name,
-          city: storeData.city
+          name: storeData.name
         }
       });
       
       if (existingStore) {
-        throw new BaseError('A store with this name already exists in this city', 409);
+        throw new BaseError('A store with this name already exists', 409);
       }
       
       // Create the store
-      const store = await prisma.store.create({
+      const store = await getPrisma().store.create({
         data: {
           name: storeData.name,
-          address: storeData.address,
-          city: storeData.city,
-          phone: storeData.phone || null,
-          email: storeData.email || null
+          address: storeData.address || null
         },
         select: {
           id: true,
           name: true,
-          address: true,
-          city: true,
-          phone: true,
-          email: true,
-          createdAt: true,
-          updatedAt: true
+          address: true
         }
       });
       
@@ -178,7 +162,7 @@ class StoreService {
   static async updateStore(id, updateData) {
     try {
       // Check if store exists
-      const existingStore = await prisma.store.findUnique({
+      const existingStore = await getPrisma().store.findUnique({
         where: { id }
       });
       
@@ -188,32 +172,31 @@ class StoreService {
       
       // Check for duplicate name if name is being updated
       if (updateData.name && updateData.name !== existingStore.name) {
-        const duplicateStore = await prisma.store.findFirst({
+        const duplicateStore = await getPrisma().store.findFirst({
           where: {
             name: updateData.name,
-            city: updateData.city || existingStore.city,
             id: { not: id }
           }
         });
         
         if (duplicateStore) {
-          throw new BaseError('A store with this name already exists in this city', 409);
+          throw new BaseError('A store with this name already exists', 409);
         }
       }
       
+      // Filter updateData to only include valid fields
+      const validFields = {};
+      if (updateData.name) validFields.name = updateData.name;
+      if (updateData.address !== undefined) validFields.address = updateData.address;
+      
       // Update the store
-      const store = await prisma.store.update({
+      const store = await getPrisma().store.update({
         where: { id },
-        data: updateData,
+        data: validFields,
         select: {
           id: true,
           name: true,
-          address: true,
-          city: true,
-          phone: true,
-          email: true,
-          createdAt: true,
-          updatedAt: true
+          address: true
         }
       });
       
@@ -237,7 +220,7 @@ class StoreService {
   static async deleteStore(id) {
     try {
       // Check if store exists
-      const existingStore = await prisma.store.findUnique({
+      const existingStore = await getPrisma().store.findUnique({
         where: { id }
       });
       
@@ -247,8 +230,8 @@ class StoreService {
       
       // Check for dependencies (sales, stock, etc.)
       const [salesCount, stockCount] = await Promise.all([
-        prisma.sale.count({ where: { storeId: id } }),
-        prisma.stock.count({ where: { storeId: id } })
+        getPrisma().sale.count({ where: { storeId: id } }),
+        getPrisma().stock.count({ where: { storeId: id } })
       ]);
       
       if (salesCount > 0 || stockCount > 0) {
@@ -256,7 +239,7 @@ class StoreService {
       }
       
       // Delete the store
-      await prisma.store.delete({
+      await getPrisma().store.delete({
         where: { id }
       });
       
@@ -280,7 +263,7 @@ class StoreService {
   static async getStoreStats(id) {
     try {
       // Check if store exists
-      const store = await prisma.store.findUnique({
+      const store = await getPrisma().store.findUnique({
         where: { id },
         select: {
           id: true,
@@ -302,18 +285,18 @@ class StoreService {
         recentSalesCount
       ] = await Promise.all([
         // Total number of sales
-        prisma.sale.count({
+        getPrisma().sale.count({
           where: { storeId: id }
         }),
         
         // Total revenue
-        prisma.sale.aggregate({
+        getPrisma().sale.aggregate({
           where: { storeId: id },
           _sum: { total: true }
         }),
         
         // Number of different products in stock
-        prisma.stock.count({
+        getPrisma().stock.count({
           where: { 
             storeId: id,
             quantity: { gt: 0 }
@@ -321,13 +304,13 @@ class StoreService {
         }),
         
         // Total stock quantity
-        prisma.stock.aggregate({
+        getPrisma().stock.aggregate({
           where: { storeId: id },
           _sum: { quantity: true }
         }),
         
         // Sales in the last 30 days
-        prisma.sale.count({
+        getPrisma().sale.count({
           where: {
             storeId: id,
             createdAt: {
@@ -363,7 +346,7 @@ class StoreService {
    */
   static async storeExists(id) {
     try {
-      const store = await prisma.store.findUnique({
+      const store = await getPrisma().store.findUnique({
         where: { id },
         select: { id: true }
       });

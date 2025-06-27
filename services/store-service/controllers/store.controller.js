@@ -23,7 +23,7 @@ import {
   logger,
   asyncHandler,
   recordOperation
-} from '@log430/shared';
+} from '../../shared/index.js';
 
 /**
  * List Stores Controller
@@ -53,7 +53,7 @@ export const list = asyncHandler(async (req, res) => {
       city
     };
 
-    const result = await StoreService.getAllStores(options, req.user);
+    const result = await StoreService.getAllStores(options);
 
     recordOperation('store_list', 'success');
 

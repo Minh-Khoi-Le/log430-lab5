@@ -28,7 +28,7 @@ import {
   UnauthorizedError,
   ConflictError,
   NotFoundError
-} from '@log430/shared';
+} from '../../shared/index.js';
 
 const router = express.Router();
 const prisma = new PrismaClient();

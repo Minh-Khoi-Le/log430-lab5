@@ -28,7 +28,6 @@
  */
 
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
 
 // Import shared components
 import {
@@ -39,22 +38,24 @@ import {
   errorHandler,
   notFoundHandler,
   httpMetricsMiddleware,
-  metricsHandler
-} from '@log430/shared';
+  metricsHandler,
+  healthCheck
+} from '../shared/index.js';
 
 // Import routes
 import storeRoutes from './routes/store.routes.js';
 
-// Initialize Express app and database connection
+// Initialize Express app
 const app = express();
-const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
-});
 
 async function initializeApp() {
   try {
     // Initialize shared services first
-    await initializeSharedServices();
+    await initializeSharedServices({
+      serviceName: 'store-service',
+      enableDatabase: true,
+      enableDatabaseLogging: process.env.NODE_ENV === 'development'
+    });
     
     const PORT = config.get('PORT') || 3003;
     
@@ -69,53 +70,7 @@ async function initializeApp() {
      * Health Check Endpoint
      * Provides comprehensive health status including database connectivity
      */
-    app.get('/health', async (req, res) => {
-      try {
-        const health = {
-          status: 'healthy',
-          timestamp: new Date().toISOString(),
-          service: 'store-service',
-          version: process.env.npm_package_version || '1.0.0',
-          uptime: process.uptime(),
-          memory: process.memoryUsage(),
-          dependencies: {
-            database: 'checking...',
-            cache: 'checking...'
-          }
-        };
-
-        // Check database connection
-        try {
-          await prisma.$queryRaw`SELECT 1`;
-          health.dependencies.database = 'healthy';
-        } catch (error) {
-          health.dependencies.database = 'unhealthy';
-          health.status = 'degraded';
-          logger.warn('Database health check failed:', error);
-        }
-
-        // Check cache connection (if available)
-        try {
-          const { redisService } = await import('@log430/shared');
-          await redisService.ping();
-          health.dependencies.cache = 'healthy';
-        } catch (error) {
-          health.dependencies.cache = 'unhealthy';
-          logger.warn('Cache health check failed:', error);
-        }
-
-        const statusCode = health.status === 'healthy' ? 200 : 503;
-        res.status(statusCode).json(health);
-      } catch (error) {
-        logger.error('Health check failed:', error);
-        res.status(503).json({
-          status: 'unhealthy',
-          timestamp: new Date().toISOString(),
-          service: 'store-service',
-          error: error.message
-        });
-      }
-    });
+    app.get('/health', healthCheck('store-service', ['database', 'redis']));
 
     /**
      * Metrics Endpoint
@@ -125,9 +80,10 @@ async function initializeApp() {
 
     /**
      * API Routes
-     * Mount store-specific routes under /api/v1/stores
+     * Mount store routes at both /stores and /api/stores to handle Kong routing
      */
-    app.use('/api/v1/stores', storeRoutes);
+    app.use('/stores', storeRoutes);
+    app.use('/api/stores', storeRoutes);
 
     /**
      * Service Information Endpoint
@@ -141,7 +97,8 @@ async function initializeApp() {
         endpoints: {
           health: '/health',
           metrics: '/metrics',
-          api: '/api/v1/stores'
+          api: '/stores',
+          api_alt: '/api/stores'
         },
         features: [
           'Store CRUD operations',
@@ -165,11 +122,7 @@ async function initializeApp() {
       logger.info(`Received ${signal}. Starting graceful shutdown...`);
       
       try {
-        // Close database connection
-        await prisma.$disconnect();
-        logger.info('Database connection closed');
-        
-        // Cleanup shared services
+        // Cleanup shared services (includes database)
         await cleanupSharedServices();
         
         // Close HTTP server
@@ -199,11 +152,11 @@ async function initializeApp() {
      * Initialize the store service and begin accepting requests
      */
     const server = app.listen(PORT, () => {
-      logger.info(`🏪 Store Service started successfully`);
-      logger.info(`📡 Server running on port ${PORT}`);
-      logger.info(`🔍 Health check available at http://localhost:${PORT}/health`);
-      logger.info(`📊 Metrics available at http://localhost:${PORT}/metrics`);
-      logger.info(`🚀 API endpoints available at http://localhost:${PORT}/api/v1/stores`);
+      logger.info(` Store Service started successfully`);
+      logger.info(` Server running on port ${PORT}`);
+      logger.info(` Health check available at http://localhost:${PORT}/health`);
+      logger.info(` Metrics available at http://localhost:${PORT}/metrics`);
+      logger.info(` API endpoints available at http://localhost:${PORT}/api/v1/stores`);
     });
 
     return server;

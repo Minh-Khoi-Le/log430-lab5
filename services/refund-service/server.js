@@ -28,7 +28,6 @@
 
 import express from 'express';
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
 
 // Import shared components
 import {
@@ -39,8 +38,9 @@ import {
   errorHandler,
   notFoundHandler,
   httpMetricsMiddleware,
-  metricsHandler
-} from '@log430/shared';
+  metricsHandler,
+  checkDatabaseHealth
+} from '../shared/index.js';
 
 // Import routes
 import refundRoutes from './routes/refund.routes.js';
@@ -48,18 +48,19 @@ import refundRoutes from './routes/refund.routes.js';
 // Load environment variables
 dotenv.config();
 
-// Initialize Express app and database connection
+// Initialize Express app
 const app = express();
-const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
-});
 
 async function initializeApp() {
   try {
     // Initialize shared services first
-    await initializeSharedServices();
+    await initializeSharedServices({
+      serviceName: 'refund-service',
+      enableDatabase: true,
+      enableDatabaseLogging: process.env.NODE_ENV === 'development'
+    });
     
-    const PORT = config.get('PORT') || 3007;
+    const PORT = config.get('service.port') || 3006;
     
     logger.info('Initializing Refund Service...');
 
@@ -88,10 +89,13 @@ async function initializeApp() {
           }
         };
 
-        // Check database connection
+        // Check database connection using shared health check
         try {
-          await prisma.$queryRaw`SELECT 1`;
-          health.dependencies.database = 'healthy';
+          const dbHealth = await checkDatabaseHealth();
+          health.dependencies.database = dbHealth.status === 'healthy' ? 'healthy' : 'unhealthy';
+          if (dbHealth.status !== 'healthy') {
+            health.status = 'degraded';
+          }
         } catch (error) {
           health.dependencies.database = 'unhealthy';
           health.status = 'degraded';
@@ -178,12 +182,9 @@ async function initializeApp() {
       logger.info(`Received ${signal}. Starting graceful shutdown...`);
       
       try {
-        // Close database connection
-        await prisma.$disconnect();
-        logger.info('Database connection closed');
-        
-        // Cleanup shared services
+        // Cleanup shared services (includes database disconnect)
         await cleanupSharedServices();
+        logger.info('Shared services cleaned up');
         
         // Close HTTP server
         server.close(() => {
@@ -212,11 +213,11 @@ async function initializeApp() {
      * Initialize the refund service and begin accepting requests
      */
     const server = app.listen(PORT, () => {
-      logger.info(`💸 Refund Service started successfully`);
-      logger.info(`📡 Server running on port ${PORT}`);
-      logger.info(`🔍 Health check available at http://localhost:${PORT}/health`);
-      logger.info(`📊 Metrics available at http://localhost:${PORT}/metrics`);
-      logger.info(`🚀 API endpoints available at http://localhost:${PORT}/api/v1/refunds`);
+      logger.info(` Refund Service started successfully`);
+      logger.info(` Server running on port ${PORT}`);
+      logger.info(` Health check available at http://localhost:${PORT}/health`);
+      logger.info(` Metrics available at http://localhost:${PORT}/metrics`);
+      logger.info(` API endpoints available at http://localhost:${PORT}/api/v1/refunds`);
     });
 
     return server;

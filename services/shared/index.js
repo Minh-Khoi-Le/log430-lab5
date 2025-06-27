@@ -23,6 +23,9 @@ export {
   CacheError
 } from './middleware/errorHandler.js';
 
+export { logger } from './utils/logger.js';
+export { healthCheck } from './utils/healthCheck.js';
+
 export {
   httpMetricsMiddleware,
   recordOperation,
@@ -113,23 +116,17 @@ export {
   validate
 } from './middleware/validateRequest.js';
 
-// Utilities exports
+// Database exports
 export {
-  logger,
-  winstonLogger,
-  formatTimestamp,
-  shouldLog
-} from './utils/logger.js';
-
-export {
-  redisService,
-  RedisService
-} from './utils/redis.js';
-
-export {
-  cacheInvalidation,
-  CacheInvalidationService
-} from './utils/cacheInvalidation.js';
+  initializeDatabase,
+  getDatabaseClient,
+  checkDatabaseHealth,
+  disconnectDatabase,
+  executeTransaction,
+  getDatabaseMetrics,
+  DatabaseInitializationError,
+  DatabaseUtils
+} from './database/index.js';
 
 // Configuration exports
 export {
@@ -146,35 +143,60 @@ export const SHARED_PACKAGE_NAME = 'log430-shared';
  * 
  * This function should be called by each microservice to initialize
  * all shared services and configurations.
+ * 
+ * @param {Object} options - Initialization options
+ * @param {string} options.serviceName - Name of the service
+ * @param {boolean} options.enableDatabase - Whether to initialize database (default: true)
+ * @param {boolean} options.enableDatabaseLogging - Enable database query logging (default: development mode)
  */
-export const initializeSharedServices = async () => {
+export const initializeSharedServices = async (options = {}) => {
   const { logger } = await import('./utils/logger.js');
   const { config } = await import('./config/index.js');
   const { initializeCache } = await import('./middleware/cache.js');
   const { redisService } = await import('./utils/redis.js');
   const { initializeMetrics } = await import('./middleware/metrics.js');
+  const { initializeDatabase } = await import('./database/index.js');
+
+  const {
+    serviceName = 'unknown-service',
+    enableDatabase = true,
+    enableDatabaseLogging = process.env.NODE_ENV === 'development'
+  } = options;
 
   try {
     // Initialize configuration
     config.initialize();
-    logger.info('Configuration initialized');
+    logger.info('Configuration initialized', { serviceName });
 
     // Initialize Redis service
     await redisService.initialize();
-    logger.info('Redis service initialized');
+    logger.info('Redis service initialized', { serviceName });
 
     // Initialize cache
     await initializeCache();
-    logger.info('Cache initialized');
+    logger.info('Cache initialized', { serviceName });
+
+    // Initialize database if enabled
+    if (enableDatabase) {
+      await initializeDatabase({
+        serviceName,
+        enableLogging: enableDatabaseLogging
+      });
+      logger.info('Database initialized', { serviceName });
+    }
 
     // Initialize metrics
     initializeMetrics();
-    logger.info('Metrics initialized');
+    logger.info('Metrics initialized', { serviceName });
 
-    logger.info('All shared services initialized successfully');
+    logger.info('All shared services initialized successfully', { serviceName });
     return true;
   } catch (error) {
-    logger.error('Failed to initialize shared services', { error: error.message });
+    logger.error('Failed to initialize shared services', { 
+      serviceName,
+      error: error.message,
+      stack: error.stack
+    });
     throw error;
   }
 };
@@ -184,25 +206,38 @@ export const initializeSharedServices = async () => {
  * 
  * This function should be called when the microservice is shutting down
  * to properly close all connections and cleanup resources.
+ * 
+ * @param {Object} options - Cleanup options
+ * @param {string} options.serviceName - Name of the service
  */
-export const cleanupSharedServices = async () => {
+export const cleanupSharedServices = async (options = {}) => {
   const { logger } = await import('./utils/logger.js');
   const { closeCache } = await import('./middleware/cache.js');
   const { redisService } = await import('./utils/redis.js');
+  const { disconnectDatabase } = await import('./database/index.js');
+
+  const { serviceName = 'unknown-service' } = options;
 
   try {
+    // Disconnect from database
+    await disconnectDatabase(serviceName);
+    logger.info('Database connection closed', { serviceName });
+
     // Close cache connections
     await closeCache();
-    logger.info('Cache connections closed');
+    logger.info('Cache connections closed', { serviceName });
 
     // Close Redis service connections
     await redisService.close();
-    logger.info('Redis service connections closed');
+    logger.info('Redis service connections closed', { serviceName });
 
-    logger.info('All shared services cleaned up successfully');
+    logger.info('All shared services cleaned up successfully', { serviceName });
     return true;
   } catch (error) {
-    logger.error('Failed to cleanup shared services', { error: error.message });
+    logger.error('Failed to cleanup shared services', { 
+      serviceName,
+      error: error.message 
+    });
     return false;
   }
 };

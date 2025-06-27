@@ -22,7 +22,7 @@ import {
   authenticate,
   authorize,
   validateId
-} from '@log430/shared';
+} from '../../shared/index.js';
 
 import * as refundController from '../controllers/refund.controller.js';
 
@@ -41,7 +41,27 @@ router.post('/',
 // Get all refunds with pagination and filtering
 router.get('/',
   authenticate,
-  refundController.getAllRefunds
+  refundController.getPendingApprovals
+);
+
+// Bulk approve refunds
+router.post('/bulk-approve',
+  authenticate,
+  authorize(['manager', 'admin']),
+  refundController.bulkApproveRefunds
+);
+
+// Get refund analytics
+router.get('/analytics/summary',
+  authenticate,
+  refundController.getRefundAnalytics
+);
+
+// Get refunds by store
+router.get('/store/:storeId',
+  authenticate,
+  validateId('storeId'),
+  refundController.getRefundsByStore
 );
 
 // Get refund by ID
@@ -58,20 +78,12 @@ router.patch('/:refundId/status',
   refundController.updateRefundStatus
 );
 
-// Approve refund (manager only)
-router.post('/:refundId/approve',
+// Process refund (complete the refund transaction)
+router.post('/:refundId/process',
   authenticate,
   authorize(['manager', 'admin']),
   validateId('refundId'),
-  refundController.approveRefund
-);
-
-// Reject refund (manager only)
-router.post('/:refundId/reject',
-  authenticate,
-  authorize(['manager', 'admin']),
-  validateId('refundId'),
-  refundController.rejectRefund
+  refundController.processRefund
 );
 
 // Cancel refund request
@@ -79,53 +91,6 @@ router.delete('/:refundId',
   authenticate,
   validateId('refundId'),
   refundController.cancelRefund
-);
-
-// Get refunds by store
-router.get('/store/:storeId',
-  authenticate,
-  validateId('storeId'),
-  refundController.getRefundsByStore
-);
-
-// Get refunds by customer
-router.get('/customer/:customerId',
-  authenticate,
-  validateId('customerId'),
-  refundController.getRefundsByCustomer
-);
-
-// Get refunds by sale
-router.get('/sale/:saleId',
-  authenticate,
-  validateId('saleId'),
-  refundController.getRefundsBySale
-);
-
-// Get refund analytics
-router.get('/analytics/summary',
-  authenticate,
-  refundController.getRefundAnalytics
-);
-
-// Get refunds by date range
-router.get('/analytics/range',
-  authenticate,
-  refundController.getRefundsByDateRange
-);
-
-// Get refund trends
-router.get('/analytics/trends',
-  authenticate,
-  refundController.getRefundTrends
-);
-
-// Process refund (complete the refund transaction)
-router.post('/:refundId/process',
-  authenticate,
-  authorize(['manager', 'admin']),
-  validateId('refundId'),
-  refundController.processRefund
 );
 
 export default router;

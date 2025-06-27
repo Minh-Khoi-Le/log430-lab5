@@ -235,10 +235,20 @@ export const recordOperation = (operation, status = 'success', duration = null) 
  * Record database operation metrics
  */
 export const recordDatabaseOperation = (operation, table, duration, status = 'success') => {
-  databaseOperationsTotal.inc({ operation, table, status });
-  databaseOperationDuration.observe({ operation, table }, duration / 1000); // Convert to seconds
+  // Ensure operation and table are defined
+  const op = operation || 'unknown';
+  const tbl = table || 'unknown';
   
-  logger.debug('Database Operation Recorded', { operation, table, duration, status });
+  // Ensure duration is a valid number
+  let durationValue = 0;
+  if (duration !== undefined && duration !== null && !isNaN(duration)) {
+    durationValue = duration / 1000; // Convert to seconds
+  }
+  
+  databaseOperationsTotal.inc({ operation: op, table: tbl, status });
+  databaseOperationDuration.observe({ operation: op, table: tbl }, durationValue);
+  
+  logger.debug('Database Operation Recorded', { operation: op, table: tbl, duration: durationValue, status });
 };
 
 /**

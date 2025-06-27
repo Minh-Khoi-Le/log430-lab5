@@ -15,13 +15,18 @@
  * @version 1.0.0
  */
 
-import { PrismaClient } from '@prisma/client';
-import { ApiError } from '../middleware/errorHandler.js';
-import logger from '../utils/logger.js';
-import { getRedisClient } from '../utils/redis.js';
+import { 
+  getDatabaseClient, 
+  executeTransaction,
+  logger,
+  BaseError
+} from '../../shared/index.js';
 import axios from 'axios';
 
-const prisma = new PrismaClient();
+// Get shared database client
+function getPrisma() {
+  return getDatabaseClient('sales-service');
+}
 
 /**
  * Sales Service Class
@@ -67,7 +72,7 @@ class SalesService {
       this.validateSaleAmounts(saleData, calculatedTotals);
 
       // Create the sale transaction
-      const sale = await prisma.$transaction(async (tx) => {
+      const sale = await executeTransaction(async (tx) => {
         // Create the main sale record
         const newSale = await tx.sale.create({
           data: {
@@ -112,7 +117,7 @@ class SalesService {
           ...newSale,
           items: saleItems
         };
-      });
+      }, 'sales-service');
 
       // Invalidate relevant caches
       await this.invalidateRelevantCaches(saleData.storeId);
@@ -135,11 +140,11 @@ class SalesService {
         duration: timer.getDuration()
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to create sale transaction', 'SALE_CREATION_FAILED');
+      throw new BaseError('Failed to create sale transaction', 500, error);
     }
   }
 
@@ -171,13 +176,13 @@ class SalesService {
       };
 
       // Get total count
-      const totalCount = await prisma.sale.count({ where });
+      const totalCount = await getPrisma().sale.count({ where });
 
       // Get paginated results
       const { page = 1, limit = 50 } = pagination;
       const offset = (page - 1) * limit;
 
-      const sales = await prisma.sale.findMany({
+      const sales = await getPrisma().sale.findMany({
         where,
         include: {
           items: {
@@ -247,7 +252,7 @@ class SalesService {
         duration: timer.getDuration()
       });
       
-      throw new ApiError(500, 'Failed to retrieve sales data', 'SALES_RETRIEVAL_FAILED');
+      throw new BaseError('Failed to retrieve sales data', 500);
     }
   }
 
@@ -270,7 +275,7 @@ class SalesService {
         return cachedSale;
       }
 
-      const sale = await prisma.sale.findFirst({
+      const sale = await getPrisma().sale.findFirst({
         where: {
           id: saleId,
           storeId: storeId
@@ -319,7 +324,7 @@ class SalesService {
       });
 
       if (!sale) {
-        throw new ApiError(404, 'Sale not found', 'SALE_NOT_FOUND');
+        throw new BaseError('Sale not found', 404);
       }
 
       // Cache for 10 minutes
@@ -341,11 +346,11 @@ class SalesService {
         duration: timer.getDuration()
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to retrieve sale', 'SALE_RETRIEVAL_FAILED');
+      throw new BaseError('Failed to retrieve sale', 500);
     }
   }
 
@@ -382,19 +387,19 @@ class SalesService {
 
       // Get basic analytics
       const [totalSales, salesCount, avgSaleAmount] = await Promise.all([
-        prisma.sale.aggregate({
+        getPrisma().sale.aggregate({
           where: whereClause,
           _sum: { totalAmount: true }
         }),
-        prisma.sale.count({ where: whereClause }),
-        prisma.sale.aggregate({
+        getPrisma().sale.count({ where: whereClause }),
+        getPrisma().sale.aggregate({
           where: whereClause,
           _avg: { totalAmount: true }
         })
       ]);
 
       // Get top products
-      const topProducts = await prisma.saleItem.groupBy({
+      const topProducts = await getPrisma().saleItem.groupBy({
         by: ['productId'],
         where: {
           sale: whereClause
@@ -415,7 +420,7 @@ class SalesService {
       });
 
       // Get sales by payment method
-      const salesByPaymentMethod = await prisma.sale.groupBy({
+      const salesByPaymentMethod = await getPrisma().sale.groupBy({
         by: ['paymentMethod'],
         where: whereClause,
         _sum: {
@@ -462,7 +467,7 @@ class SalesService {
         duration: timer.getDuration()
       });
       
-      throw new ApiError(500, 'Failed to generate sales analytics', 'ANALYTICS_GENERATION_FAILED');
+      throw new BaseError('Failed to generate sales analytics', 500);
     }
   }
 
@@ -481,10 +486,10 @@ class SalesService {
       const validStatuses = ['COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED'];
       
       if (!validStatuses.includes(status)) {
-        throw new ApiError(400, 'Invalid sale status', 'INVALID_STATUS');
+        throw new BaseError('Invalid sale status', 400);
       }
 
-      const sale = await prisma.sale.update({
+      const sale = await getPrisma().sale.update({
         where: { id: saleId },
         data: {
           status,
@@ -525,11 +530,11 @@ class SalesService {
         duration: timer.getDuration()
       });
       
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
-      throw new ApiError(500, 'Failed to update sale status', 'STATUS_UPDATE_FAILED');
+      throw new BaseError('Failed to update sale status', 500);
     }
   }
 
@@ -543,25 +548,25 @@ class SalesService {
     const missing = required.filter(field => !saleData[field]);
     
     if (missing.length > 0) {
-      throw new ApiError(400, `Missing required fields: ${missing.join(', ')}`, 'VALIDATION_ERROR');
+      throw new BaseError(`Missing required fields: ${missing.join(', ')}`, 400);
     }
 
     if (!Array.isArray(saleData.items) || saleData.items.length === 0) {
-      throw new ApiError(400, 'Sale must contain at least one item', 'VALIDATION_ERROR');
+      throw new BaseError('Sale must contain at least one item', 400);
     }
 
     if (saleData.totalAmount <= 0) {
-      throw new ApiError(400, 'Total amount must be greater than zero', 'VALIDATION_ERROR');
+      throw new BaseError('Total amount must be greater than zero', 400);
     }
 
     // Validate each item
     saleData.items.forEach((item, index) => {
       if (!item.productId || !item.quantity || !item.unitPrice) {
-        throw new ApiError(400, `Item ${index + 1} is missing required fields`, 'VALIDATION_ERROR');
+        throw new BaseError(`Item ${index + 1} is missing required fields`, 400);
       }
       
       if (item.quantity <= 0 || item.unitPrice <= 0) {
-        throw new ApiError(400, `Item ${index + 1} has invalid quantity or price`, 'VALIDATION_ERROR');
+        throw new BaseError(`Item ${index + 1} has invalid quantity or price`, 400);
       }
     });
   }
@@ -582,14 +587,14 @@ class SalesService {
         const stockData = response.data.data;
         
         if (stockData.quantity < item.quantity) {
-          throw new ApiError(400, 
+          throw new BaseError(
             `Insufficient stock for product ${item.productId}. Available: ${stockData.quantity}, Required: ${item.quantity}`, 
-            'INSUFFICIENT_STOCK'
+            400
           );
         }
       }
     } catch (error) {
-      if (error instanceof ApiError) {
+      if (error instanceof BaseError) {
         throw error;
       }
       
@@ -625,7 +630,7 @@ class SalesService {
     const tolerance = 0.01; // 1 cent tolerance for rounding
     
     if (Math.abs(saleData.totalAmount - calculated.total) > tolerance) {
-      throw new ApiError(400, 'Sale amount does not match calculated total', 'AMOUNT_MISMATCH');
+      throw new BaseError('Sale amount does not match calculated total', 400);
     }
   }
 
@@ -700,7 +705,7 @@ class SalesService {
    */
   async getTimeBasedSales(whereClause, groupBy) {
     // This is a simplified version - in production you'd use proper SQL aggregation
-    const sales = await prisma.sale.findMany({
+    const sales = await getPrisma().sale.findMany({
       where: whereClause,
       select: {
         saleDate: true,

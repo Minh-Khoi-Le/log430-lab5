@@ -10,6 +10,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useCart } from "../context/CartContext";
 import { useUser } from "../context/UserContext";
+import { apiFetch, API_ENDPOINTS } from "../api";
 import {
   AppBar,
   Toolbar,
@@ -45,10 +46,18 @@ function Navbar() {
   // Fetch available stores when component mounts
   useEffect(() => {
     if (user?.role === "client") {
-      fetch("http://localhost:3000/api/v1/stores")
-        .then((res) => res.json())
-        .then((data) => setStores(data))
-        .catch(() => setStores([]));
+      apiFetch(API_ENDPOINTS.STORES.BASE)
+        .then((response) => {
+          // Handle structured API response
+          const data = response.success ? response.data : response;
+          // Handle nested structure if stores are under 'stores' property
+          const stores = data.stores || data;
+          setStores(Array.isArray(stores) ? stores : []);
+        })
+        .catch((error) => {
+          console.error("Failed to fetch stores:", error);
+          setStores([]);
+        });
     }
   }, [user]);
 

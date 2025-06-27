@@ -24,13 +24,13 @@
  */
 
 import express from 'express';
-import StockController from '../controllers/stock.controller.js';
+import * as StockController from '../controllers/stock.controller.js';
 
 // Import shared middleware
 import { 
   authenticate,
   validateId
-} from '@log430/shared';
+} from '../../shared/index.js';
 
 const router = express.Router();
 

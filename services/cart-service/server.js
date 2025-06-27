@@ -21,8 +21,9 @@ import {
   errorHandler,
   notFoundHandler,
   httpMetricsMiddleware,
-  metricsHandler
-} from '@log430/shared';
+  metricsHandler,
+  healthCheck
+} from '../shared/index.js';
 
 // Import routes
 import cartRoutes from './routes/cart.routes.js';
@@ -32,10 +33,14 @@ const app = express();
 
 async function initializeApp() {
   try {
-    // Initialize shared services first
-    await initializeSharedServices();
+    // Initialize shared services including database
+    await initializeSharedServices({
+      serviceName: 'cart-service',
+      enableDatabase: true,
+      enableDatabaseLogging: process.env.NODE_ENV === 'development'
+    });
     
-    const PORT = config.get('PORT') || 3006;
+    const PORT = config.get('service.port') || 3007;
     
     logger.info('Initializing Cart Service...');
 
@@ -48,60 +53,11 @@ async function initializeApp() {
      * Health Check Endpoint
      * Provides service health status and dependency checks
      */
-    app.get('/health', async (req, res) => {
-      try {
-        const health = {
-          status: 'healthy',
-          timestamp: new Date().toISOString(),
-          service: 'cart-service',
-          version: process.env.npm_package_version || '1.0.0',
-          uptime: process.uptime(),
-          memory: process.memoryUsage(),
-          dependencies: {
-            redis: 'checking...',
-            productService: 'checking...',
-            stockService: 'checking...'
-          }
-        };
-
-        // Check Redis connection
-        try {
-          const { redisService } = await import('@log430/shared');
-          await redisService.ping();
-          health.dependencies.redis = 'healthy';
-        } catch (error) {
-          health.dependencies.redis = 'unhealthy';
-          health.status = 'degraded';
-          logger.warn('Redis health check failed:', error);
-        }
-
-        // Check external service dependencies (basic connectivity)
-        try {      
-          // These would be actual HTTP calls in production
-          health.dependencies.productService = 'available';
-          health.dependencies.stockService = 'available';
-        } catch (error) {
-          logger.warn('External service health check failed:', error);
-          health.dependencies.productService = 'unknown';
-          health.dependencies.stockService = 'unknown';
-        }
-
-        const statusCode = health.status === 'healthy' ? 200 : 503;
-        res.status(statusCode).json(health);
-      } catch (error) {
-        logger.error('Health check failed:', error);
-        res.status(503).json({
-          status: 'unhealthy',
-          timestamp: new Date().toISOString(),
-          service: 'cart-service',
-          error: error.message
-        });
-      }
-    });
+    app.get('/health', healthCheck('cart-service', ['database', 'redis']));
 
     /**
      * Metrics Endpoint
-     * Uses shared metrics handler
+     * Exposes Prometheus metrics
      */
     app.get('/metrics', metricsHandler);
 
@@ -149,17 +105,8 @@ async function initializeApp() {
       logger.info(`Received ${signal}. Starting graceful shutdown...`);
       
       try {
-        // Close Redis connection
-        try {
-          const { redisService } = await import('@log430/shared');
-          await redisService.close();
-          logger.info('Redis connection closed');
-        } catch (error) {
-          logger.warn('Error closing Redis connection:', error);
-        }
-        
-        // Cleanup shared services
-        await cleanupSharedServices();
+        // Cleanup shared services (includes database and Redis)
+        await cleanupSharedServices({ serviceName: 'cart-service' });
         
         // Close HTTP server
         server.close(() => {
@@ -188,11 +135,11 @@ async function initializeApp() {
      * Initialize the cart service and begin accepting requests
      */
     const server = app.listen(PORT, () => {
-      logger.info(`🛒 Cart Service started successfully`);
-      logger.info(`📡 Server running on port ${PORT}`);
-      logger.info(`🔍 Health check available at http://localhost:${PORT}/health`);
-      logger.info(`📊 Metrics available at http://localhost:${PORT}/metrics`);
-      logger.info(`🚀 API endpoints available at http://localhost:${PORT}/api/v1/cart`);
+      logger.info(` Cart Service started successfully`);
+      logger.info(` Server running on port ${PORT}`);
+      logger.info(` Health check available at http://localhost:${PORT}/health`);
+      logger.info(` Metrics available at http://localhost:${PORT}/metrics`);
+      logger.info(` API endpoints available at http://localhost:${PORT}/api/v1/cart`);
     });
 
     return server;

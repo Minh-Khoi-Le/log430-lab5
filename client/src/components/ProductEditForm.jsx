@@ -2,26 +2,26 @@
  * Product Edit Form Component
  * 
  * This component provides a form for editing product details.
- * It's used by administrators (gestionnaire role) to modify product information.
+ * It's used by managers to modify product information.
  * 
  */
 
 import React, { useState, useEffect } from "react";
 import { useUser } from "../context/UserContext";
+import { authenticatedFetch, API_ENDPOINTS } from "../api";
 import {
-  Table,
-  TableBody,
-  TableCell,
   TableContainer,
+  Table,
   TableHead,
+  TableBody,
   TableRow,
+  TableCell,
   Paper,
   TextField,
   Typography,
   Box,
   Button,
-  CircularProgress,
-  TextareaAutosize
+  CircularProgress
 } from "@mui/material";
 
 /**
@@ -45,7 +45,7 @@ const ProductEditForm = ({ product, onSave, onCancel, isNewProduct = false }) =>
   // State for stock quantities by store
   const [stocks, setStocks] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [stockLoading, setStockLoading] = useState(false);
   
   // Get user from context
   const { user } = useUser();
@@ -60,7 +60,7 @@ const ProductEditForm = ({ product, onSave, onCancel, isNewProduct = false }) =>
         description: product.description || ""
       });
       
-      // Fetch all available stores and stock information for existing products
+      // Fetch stock information for existing products
       if (product.id && !isNewProduct) {
         fetchStockData(product.id);
       }
@@ -70,38 +70,58 @@ const ProductEditForm = ({ product, onSave, onCancel, isNewProduct = false }) =>
   // Fetch stock data for this product
   const fetchStockData = async (productId) => {
     try {
-      setLoading(true);
+      setStockLoading(true);
       
-      // First fetch all stores to ensure we have stock entries for each
-      const storesResponse = await fetch('http://localhost:3000/api/v1/stores');
-      if (!storesResponse.ok) {
-        throw new Error('Failed to fetch stores');
-      }
-      const stores = await storesResponse.json();
+      // First fetch all stores
+      const storesResponse = await authenticatedFetch(
+        API_ENDPOINTS.STORES.BASE,
+        user.token
+      );
       
-      // Then fetch current stock data
-      const stockResponse = await fetch(`http://localhost:3000/api/v1/stocks/product/${productId}`);
-      if (!stockResponse.ok) {
-        throw new Error('Failed to fetch stock data');
-      }
-      const stockData = await stockResponse.json();
+      // Then fetch current stock data for this product
+      const stockResponse = await authenticatedFetch(
+        API_ENDPOINTS.STOCK.BY_PRODUCT(productId),
+        user.token
+      );
       
       // If we have no stock data, initialize with 0 quantity for each store
-      if (stockData.length === 0) {
-        const initialStocks = stores.map(store => ({
+      if (stockResponse.length === 0) {
+        const initialStocks = storesResponse.map(store => ({
           id: `temp_${store.id}`,
           storeId: store.id,
           store: store,
+          productId: productId,
           quantity: 0
         }));
         setStocks(initialStocks);
       } else {
-        setStocks(stockData);
+        // Make sure every store has a stock entry
+        const stockMap = new Map(stockResponse.map(s => [s.storeId, s]));
+        
+        const completeStocks = storesResponse.map(store => {
+          const existingStock = stockMap.get(store.id);
+          if (existingStock) {
+            return {
+              ...existingStock,
+              store
+            };
+          } else {
+            return {
+              id: `temp_${store.id}`,
+              storeId: store.id,
+              store: store,
+              productId: productId,
+              quantity: 0
+            };
+          }
+        });
+        
+        setStocks(completeStocks);
       }
     } catch (error) {
       console.error("Error fetching stock data:", error);
     } finally {
-      setLoading(false);
+      setStockLoading(false);
     }
   };
 
@@ -126,14 +146,9 @@ const ProductEditForm = ({ product, onSave, onCancel, isNewProduct = false }) =>
    * @param {number} stockId - Stock ID
    * @param {number} value - New quantity value
    */
-  const handleStockChange = (stockId, value) => {
-    const updatedStocks = stocks.map(stock => {
-      if (stock.id === stockId) {
-        return { ...stock, quantity: parseInt(value) || 0 };
-      }
-      return stock;
-    });
-    
+  const handleStockChange = (stockIndex, value) => {
+    const updatedStocks = [...stocks];
+    updatedStocks[stockIndex].quantity = parseInt(value) || 0;
     setStocks(updatedStocks);
   };
   
@@ -144,17 +159,13 @@ const ProductEditForm = ({ product, onSave, onCancel, isNewProduct = false }) =>
   const saveStockChanges = async () => {
     try {
       setLoading(true);
-      setSaveSuccess(false);
       
       // Save stock changes for each store
       const promises = stocks.map(stock => 
-        fetch(`http://localhost:3000/api/v1/stocks/product/${product.id}`, {
+        authenticatedFetch(`${API_ENDPOINTS.STOCK.UPDATE}`, user.token, {
           method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${user.token}`
-          },
           body: JSON.stringify({
+            productId: product.id,
             storeId: stock.storeId,
             quantity: stock.quantity || 0
           })
@@ -162,7 +173,6 @@ const ProductEditForm = ({ product, onSave, onCancel, isNewProduct = false }) =>
       );
       
       await Promise.all(promises);
-      setSaveSuccess(true);
       
       // Refresh stock data
       await fetchStockData(product.id);
@@ -200,127 +210,112 @@ const ProductEditForm = ({ product, onSave, onCancel, isNewProduct = false }) =>
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ minWidth: 280, width: '100%', maxWidth: 600 }}>
+    <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 600 }}>
       {/* Product name field */}
       <div style={{ marginBottom: 18 }}>
-        <label>Name<br/>
-          <input
-            name="name"
-            value={form.name || ""}
-            onChange={handleChange}
-            style={{ width: "100%", padding: 6 }}
-            required
-            placeholder="Product name"
-          />
-        </label>
+        <label htmlFor="name">Name</label>
+        <input
+          id="name"
+          name="name"
+          value={form.name || ""}
+          onChange={handleChange}
+          style={{ width: "100%", padding: 8, marginTop: 4 }}
+          required
+          placeholder="Product name"
+        />
       </div>
       
       {/* Product price field */}
       <div style={{ marginBottom: 18 }}>
-        <label>Price<br/>
-          <input
-            name="price"
-            type="number"
-            value={form.price || ""}
-            onChange={handleChange}
-            style={{ width: "100%", padding: 6 }}
-            required
-            placeholder="Product price"
-            step="0.01"
-            min="0"
-          />
-        </label>
+        <label htmlFor="price">Price ($)</label>
+        <input
+          id="price"
+          name="price"
+          type="number"
+          value={form.price || ""}
+          onChange={handleChange}
+          style={{ width: "100%", padding: 8, marginTop: 4 }}
+          required
+          placeholder="Product price"
+          step="0.01"
+          min="0"
+        />
       </div>
       
       {/* Product description field */}
       <div style={{ marginBottom: 18 }}>
-        <label>Description<br/>
-          <TextareaAutosize
-            name="description"
-            value={form.description || ""}
-            onChange={handleChange}
-            style={{ width: "100%", padding: 6, minHeight: 80 }}
-            placeholder="Product description (optional)"
-          />
-        </label>
+        <label htmlFor="description">Description</label>
+        <textarea
+          id="description"
+          name="description"
+          value={form.description || ""}
+          onChange={handleChange}
+          style={{ width: "100%", padding: 8, minHeight: 100, marginTop: 4, resize: "vertical" }}
+          placeholder="Product description (optional)"
+        />
       </div>
       
       {/* Stock management section (only for existing products) */}
       {!isNewProduct && (
         <div style={{ marginTop: 24 }}>
-          <Typography variant="h6" gutterBottom>
-            Stock Management
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">Stock Levels</Typography>
+            <Button 
+              variant="contained" 
+              size="small" 
+              onClick={saveStockChanges}
+              disabled={stockLoading || loading}
+            >
+              {loading ? <CircularProgress size={20} /> : "Update Stock"}
+            </Button>
+          </Box>
           
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
+          {stockLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
               <CircularProgress />
             </Box>
           ) : (
-            <>
-              <TableContainer component={Paper} sx={{ mb: 2 }}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Store</TableCell>
-                      <TableCell align="right">Quantity</TableCell>
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Store</TableCell>
+                    <TableCell align="right">Quantity</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {stocks.map((stock, index) => (
+                    <TableRow key={stock.id}>
+                      <TableCell>{stock.store?.name}</TableCell>
+                      <TableCell align="right">
+                        <TextField
+                          type="number"
+                          size="small"
+                          value={stock.quantity}
+                          onChange={(e) => handleStockChange(index, e.target.value)}
+                          InputProps={{ 
+                            inputProps: { 
+                              min: 0, 
+                              style: { textAlign: 'right', width: '60px' } 
+                            } 
+                          }}
+                        />
+                      </TableCell>
                     </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {stocks.map((stock) => (
-                      <TableRow key={stock.id}>
-                        <TableCell>{stock.store.name}</TableCell>
-                        <TableCell align="right">
-                          <TextField
-                            type="number"
-                            value={stock.quantity}
-                            onChange={(e) => handleStockChange(stock.id, e.target.value)}
-                            InputProps={{ inputProps: { min: 0 } }}
-                            variant="outlined"
-                            size="small"
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-              
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={saveStockChanges}
-                disabled={loading}
-                sx={{ mr: 1 }}
-              >
-                Update Stock
-              </Button>
-              
-              {saveSuccess && (
-                <Typography variant="body2" color="success.main" sx={{ mt: 1 }}>
-                  Stock updated successfully!
-                </Typography>
-              )}
-            </>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
           )}
         </div>
       )}
       
-      {/* Form action buttons */}
-      <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="outlined"
-          color="secondary"
-          onClick={onCancel}
-          sx={{ mr: 1 }}
-        >
+      {/* Form actions */}
+      <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+        <Button variant="outlined" onClick={onCancel}>
           Cancel
         </Button>
-        <Button
-          variant="contained"
-          color="primary"
-          type="submit"
-        >
+        <Button variant="contained" type="submit">
           {isNewProduct ? "Create Product" : "Save Changes"}
         </Button>
       </div>

@@ -4,7 +4,7 @@
  * This component displays a single product in a card format.
  * It adapts its functionality based on the user's role:
  * - For clients: Shows add to cart button and store-specific stock
- * - For gestionnaires: Shows edit, delete buttons and total stock across all stores
+ * - For managers: Shows edit, delete buttons and total stock across all stores
  */
 
 import React from "react";
@@ -32,19 +32,19 @@ const ProductCard = ({ product, onEdit, onDelete }) => {
   const { addToCart } = useCart();
   const { user } = useUser();
   
-  // Calculate total stock across all stores (for gestionnaire)
+  // Calculate total stock across all stores (for manager)
   const totalStock = product.stocks
     ? product.stocks.reduce((sum, s) => sum + s.quantity, 0)
     : 0;
     
   // Get stock for the current store (for client)
-  const currentStoreStock = product.stocks
-    ? product.stocks.find(s => s.storeId === user?.storeId)?.quantity || 0
+  const currentStoreStock = product.stocks && user?.storeId
+    ? product.stocks.find(s => s.storeId === user.storeId)?.quantity || 0
     : 0;
     
   // Determine which stock value to display based on user role
-  const displayStock = user?.role === "gestionnaire" ? totalStock : currentStoreStock;
-  const stockLabel = user?.role === "gestionnaire" ? "Total stock" : "Available stock";
+  const displayStock = user?.role === "manager" ? totalStock : currentStoreStock;
+  const stockLabel = user?.role === "manager" ? "Total stock" : "Available stock";
 
   // Check if user is a client for conditional rendering
   const isClient = user?.role === "client";
@@ -93,10 +93,28 @@ const ProductCard = ({ product, onEdit, onDelete }) => {
           {isClient && <StorefrontIcon fontSize="small" sx={{ mr: 0.5, opacity: 0.7 }} />}
           {stockLabel}&nbsp;: <b>{displayStock}</b>
         </Typography>
+        
+        {/* Product description (short version) */}
+        {product.description && (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ 
+              mt: 1,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical"
+            }}
+          >
+            {product.description}
+          </Typography>
+        )}
       </CardContent>
 
       <CardActions sx={{ justifyContent: "space-between", pt: 0 }}>
-        {/* Admin actions: Edit and Delete buttons (only shown for gestionnaire role) */}
+        {/* Admin actions: Edit and Delete buttons (only shown for manager role) */}
         <Fade in={hover && (!!onEdit || !!onDelete)}>
           <Box>
             {/* Edit button */}
@@ -153,7 +171,7 @@ const ProductCard = ({ product, onEdit, onDelete }) => {
               }}
               fullWidth
             >
-              {currentStoreStock === 0 ? "Unavailable" : "Add to cart"}
+              {currentStoreStock === 0 ? "Out of Stock" : "Add to Cart"}
             </Button>
           </Box>
         )}

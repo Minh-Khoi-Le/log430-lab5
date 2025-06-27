@@ -2,7 +2,32 @@
  * Stock Service Business Logic
  * 
  * This service handles the core business logic for stock management operations.
- * It provides a comprehensive interface for inventory management, stock tracking,
+ * It provides a comprehensive interface for inventory mana      // Get additional metadata
+      const [inStockCount, outOfStockCount, lowStockCount] = await Promise.all([
+        getPrisma().stock.count({ 
+          where: { storeId, quantity: { gt: 0 } } 
+        }),
+        getPrisma().stock.count({ 
+          where: { storeId, quantity: 0 } 
+        }),
+        getPrisma().stock.count({ 
+          where: { storeId, quantity: { lt: thresho        // Total stock items
+        getPrisma().stock.count({ where }),
+        
+        // In stock items
+        getPrisma().stock.count({ 
+          where: { ...where, quantity: { gt: 0 } } 
+        }),
+        
+        // Out of stock items
+        getPrisma().stock.count({ 
+          where: { ...where, quantity: 0 } 
+        }),
+        
+        // Low stock items (with pagination)
+        getPrisma().stock.findMany({
+        })
+      ]);k tracking,
  * and stock operations across multiple stores.
  * 
  * Features:
@@ -17,17 +42,59 @@
  * @version 1.0.0
  */
 
-import { PrismaClient } from '@prisma/client';
-import { BaseError } from '@log430/shared/middleware/errorHandler.js';
-import logger from '../utils/logger.js';
 import { 
-  cacheStockData, 
-  getCachedStockData, 
-  invalidateStockCache,
-  deleteCachePattern 
-} from '../utils/redis.js';
+  getDatabaseClient, 
+  executeTransaction,
+  logger,
+  BaseError,
+  redisClient
+} from '../../shared/index.js';
 
-const prisma = new PrismaClient();
+// Get shared database client
+function getPrisma() {
+  return getDatabaseClient('stock-service');
+}
+
+/**
+ * Stock-specific cache utility functions
+ */
+async function getCachedStockData(type, identifier) {
+  try {
+    const redis = redisClient;
+    if (!redis) {
+      logger.warn('Redis client not available');
+      return null;
+    }
+    const key = `stock-service:${type}:${identifier}`;
+    const cached = await redis.get(key);
+    return cached ? JSON.parse(cached) : null;
+  } catch (error) {
+    logger.warn('Stock cache retrieval failed', { type, identifier, error: error.message });
+    return null;
+  }
+}
+
+async function cacheStockData(type, identifier, data, ttl = 300) {
+  try {
+    const redis = redisClient;
+    if (!redis) {
+      logger.warn('Redis client not available');
+      return;
+    }
+    const key = `stock-service:${type}:${identifier}`;
+    if (redis.setEx) {
+      await redis.setEx(key, ttl, JSON.stringify(data));
+    } else if (redis.setex) {
+      await redis.setex(key, ttl, JSON.stringify(data));
+    } else {
+      // Fallback for different Redis client versions
+      await redis.set(key, JSON.stringify(data), 'EX', ttl);
+    }
+    logger.debug('Stock data cached', { type, identifier, ttl });
+  } catch (error) {
+    logger.warn('Stock cache storage failed', { type, identifier, error: error.message });
+  }
+}
 
 /**
  * Stock Service Class
@@ -66,15 +133,15 @@ class StockService {
         ...(!includeZero && { quantity: { gt: 0 } })
       };
       
-      const stocks = await prisma.stock.findMany({
+      const stocks = await getPrisma().stock.findMany({
         where,
         include: {
           product: {
             select: {
               id: true,
               name: true,
-              category: true,
-              price: true
+              price: true,
+              description: true
             }
           },
           store: {
@@ -123,7 +190,6 @@ class StockService {
    * @param {number} options.page - Page number
    * @param {number} options.limit - Items per page
    * @param {boolean} options.includeZero - Include products with zero stock
-   * @param {string} options.category - Product category filter
    * @param {boolean} options.lowStock - Show only low stock items
    * @param {number} options.threshold - Low stock threshold
    * @returns {Promise<Object>} Paginated stock information with metadata
@@ -133,7 +199,6 @@ class StockService {
       page = 1, 
       limit = 50, 
       includeZero = false, 
-      category,
       lowStock = false,
       threshold = 10
     } = options;
@@ -145,20 +210,12 @@ class StockService {
       const where = {
         storeId,
         ...(!includeZero && { quantity: { gt: 0 } }),
-        ...(lowStock && { quantity: { lt: threshold, gt: 0 } }),
-        ...(category && { 
-          product: { 
-            category: { 
-              contains: category, 
-              mode: 'insensitive' 
-            } 
-          } 
-        })
+        ...(lowStock && { quantity: { lt: threshold, gt: 0 } })
       };
       
       // Get stocks with pagination
       const [stocks, total] = await Promise.all([
-        prisma.stock.findMany({
+        getPrisma().stock.findMany({
           where,
           skip,
           take: limit,
@@ -167,7 +224,6 @@ class StockService {
               select: {
                 id: true,
                 name: true,
-                category: true,
                 price: true,
                 description: true
               }
@@ -178,18 +234,18 @@ class StockService {
             { product: { name: 'asc' } }
           ]
         }),
-        prisma.stock.count({ where })
+        getPrisma().stock.count({ where })
       ]);
       
       // Get additional metadata
       const [inStockCount, outOfStockCount, lowStockCount] = await Promise.all([
-        prisma.stock.count({ 
+        getPrisma().stock.count({ 
           where: { storeId, quantity: { gt: 0 } } 
         }),
-        prisma.stock.count({ 
+        getPrisma().stock.count({ 
           where: { storeId, quantity: 0 } 
         }),
-        prisma.stock.count({ 
+        getPrisma().stock.count({ 
           where: { storeId, quantity: { lt: threshold, gt: 0 } } 
         })
       ]);
@@ -236,7 +292,7 @@ class StockService {
     const { productId, storeId, quantity, type, reason, userId } = updateData;
     
     try {
-      return await prisma.$transaction(async (tx) => {
+      return await executeTransaction(async (tx) => {
         // Get current stock
         let stock = await tx.stock.findFirst({
           where: { productId, storeId },
@@ -287,15 +343,20 @@ class StockService {
             }
           });
         }
+        // Determine movement type
+        let movementType;
+        if (type === 'adjustment') {
+          movementType = quantity > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT';
+        } else {
+          movementType = 'MANUAL_SET';
+        }
         
         // Create stock movement record for audit trail
         await tx.stockMovement.create({
           data: {
             productId,
             storeId,
-            movementType: type === 'adjustment' ? 
-              (quantity > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT') : 
-              'MANUAL_SET',
+            movementType,
             quantity: type === 'adjustment' ? Math.abs(quantity) : newQuantity,
             previousQuantity,
             newQuantity,
@@ -390,7 +451,7 @@ class StockService {
     const { productId, fromStoreId, toStoreId, quantity, reason, userId } = transferData;
     
     try {
-      return await prisma.$transaction(async (tx) => {
+      return await executeTransaction(async (tx) => {
         // Get source stock
         const fromStock = await tx.stock.findFirst({
           where: { productId, storeId: fromStoreId }
@@ -527,12 +588,11 @@ class StockService {
    * @param {Object} filters - Filter options
    * @param {number} filters.storeId - Filter by store
    * @param {number} filters.productId - Filter by product
-   * @param {string} filters.category - Filter by category
    * @param {number} filters.lowStockThreshold - Low stock threshold
    * @returns {Promise<Object>} Stock summary and analytics
    */
   static async getStockSummary(filters = {}) {
-    const { storeId, productId, category, lowStockThreshold = 10 } = filters;
+    const { storeId, productId, lowStockThreshold = 10 } = filters;
     
     try {
       // Check cache first
@@ -546,15 +606,7 @@ class StockService {
       // Build where clause
       const where = {
         ...(storeId && { storeId }),
-        ...(productId && { productId }),
-        ...(category && { 
-          product: { 
-            category: { 
-              contains: category, 
-              mode: 'insensitive' 
-            } 
-          } 
-        })
+        ...(productId && { productId })
       };
       
       // Get summary statistics
@@ -568,26 +620,26 @@ class StockService {
         recentMovements
       ] = await Promise.all([
         // Total stock items
-        prisma.stock.count({ where }),
+        getPrisma().stock.count({ where }),
         
         // In stock items
-        prisma.stock.count({ 
+        getPrisma().stock.count({ 
           where: { ...where, quantity: { gt: 0 } } 
         }),
         
         // Out of stock items
-        prisma.stock.count({ 
+        getPrisma().stock.count({ 
           where: { ...where, quantity: 0 } 
         }),
         
         // Low stock items
-        prisma.stock.findMany({
+        getPrisma().stock.findMany({
           where: { 
             ...where, 
             quantity: { lt: lowStockThreshold, gt: 0 } 
           },
           include: {
-            product: { select: { id: true, name: true, category: true } },
+            product: { select: { id: true, name: true, description: true } },
             store: { select: { id: true, name: true } }
           },
           orderBy: { quantity: 'asc' },
@@ -595,7 +647,7 @@ class StockService {
         }),
         
         // Total inventory value
-        prisma.stock.aggregate({
+        getPrisma().stock.aggregate({
           where,
           _sum: {
             quantity: true
@@ -603,17 +655,17 @@ class StockService {
         }),
         
         // Top products by quantity
-        prisma.stock.findMany({
+        getPrisma().stock.findMany({
           where,
           include: {
-            product: { select: { id: true, name: true, category: true, price: true } }
+            product: { select: { id: true, name: true, price: true, description: true } }
           },
           orderBy: { quantity: 'desc' },
           take: 10
         }),
         
         // Recent stock movements
-        prisma.stockMovement.findMany({
+        getPrisma().stockMovement.findMany({
           where: {
             ...(storeId && { storeId }),
             ...(productId && { productId })
@@ -629,13 +681,13 @@ class StockService {
       
       // Get unique stores and products count
       const [totalStores, totalProducts] = await Promise.all([
-        prisma.stock.groupBy({
+        getPrisma().stock.groupBy({
           by: ['storeId'],
           where,
           _count: true
         }).then(groups => groups.length),
         
-        prisma.stock.groupBy({
+        getPrisma().stock.groupBy({
           by: ['productId'],
           where,
           _count: true
@@ -701,7 +753,7 @@ class StockService {
    */
   static async checkAvailability(productId, storeId, requestedQuantity) {
     try {
-      const stock = await prisma.stock.findFirst({
+      const stock = await getPrisma().stock.findFirst({
         where: { productId, storeId },
         include: {
           product: { select: { id: true, name: true } },
@@ -727,6 +779,44 @@ class StockService {
     } catch (error) {
       logger.error('Error checking stock availability:', { productId, storeId, requestedQuantity, error: error.message });
       throw new BaseError('Failed to check stock availability', 500);
+    }
+  }
+
+  /**
+   * Cache management methods
+   */
+  static async getCachedResult(key) {
+    try {
+      const redis = redisClient;
+      if (!redis) {
+        logger.warn('Redis client not available');
+        return null;
+      }
+      const cached = await redis.get(key);
+      return cached ? JSON.parse(cached) : null;
+    } catch (error) {
+      logger.warn('Cache retrieval failed', { key, error: error.message });
+      return null;
+    }
+  }
+
+  static async setCachedResult(key, data, ttl = 300) {
+    try {
+      const redis = redisClient;
+      if (!redis) {
+        logger.warn('Redis client not available');
+        return;
+      }
+      if (redis.setEx) {
+        await redis.setEx(key, ttl, JSON.stringify(data));
+      } else if (redis.setex) {
+        await redis.setex(key, ttl, JSON.stringify(data));
+      } else {
+        // Fallback for different Redis client versions
+        await redis.set(key, JSON.stringify(data), 'EX', ttl);
+      }
+    } catch (error) {
+      logger.warn('Cache storage failed', { key, error: error.message });
     }
   }
 }

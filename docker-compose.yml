@@ -42,8 +42,6 @@ services:
       - PORT=3001
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
       - REDIS_URL=redis://redis:6379
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
       - JWT_SECRET=your-secret-key-change-in-production
     ports:
       - "3001:3001"
@@ -69,8 +67,6 @@ services:
       - PORT=3002
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
       - REDIS_URL=redis://redis:6379
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
       - JWT_SECRET=your-secret-key-change-in-production
     ports:
       - "3002:3002"
@@ -95,8 +91,7 @@ services:
       - NODE_ENV=development
       - PORT=3003
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_URL=redis://redis:6379
       - JWT_SECRET=your-secret-key-change-in-production
     ports:
       - "3003:3003"
@@ -121,8 +116,7 @@ services:
       - NODE_ENV=development
       - PORT=3004
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_URL=redis://redis:6379
       - JWT_SECRET=your-secret-key-change-in-production
     ports:
       - "3004:3004"
@@ -147,8 +141,7 @@ services:
       - NODE_ENV=development
       - PORT=3005
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_URL=redis://redis:6379
       - JWT_SECRET=your-secret-key-change-in-production
     ports:
       - "3005:3005"
@@ -173,8 +166,7 @@ services:
       - NODE_ENV=development
       - PORT=3006
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_URL=redis://redis:6379
       - JWT_SECRET=your-secret-key-change-in-production
     ports:
       - "3006:3006"
@@ -199,8 +191,7 @@ services:
       - NODE_ENV=development
       - PORT=3007
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_URL=redis://redis:6379
       - JWT_SECRET=your-secret-key-change-in-production
     ports:
       - "3007:3007"
@@ -216,35 +207,6 @@ services:
       retries: 3
       start_period: 40s
 
-  # Prometheus Monitoring
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./services/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
-    restart: unless-stopped
-
-  # Grafana Dashboards
-  grafana:
-    image: grafana/grafana:latest
-    ports:
-      - "3100:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./services/monitoring/grafana:/etc/grafana/provisioning
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_SECURITY_ADMIN_USER=admin
-    restart: unless-stopped
 
   # Database migration service
   db-migrate:
@@ -258,11 +220,59 @@ services:
       postgres:
         condition: service_healthy
 
+  # Database seeding service
+  db-seed:
+    build:
+      context: .
+      dockerfile: services/product-service/Dockerfile
+    command: sh -c "cd /app && node prisma/seed.js"
+    environment:
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
+      - NODE_ENV=development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - seed
+    networks:
+      - default
+
+  # Kong API Gateway
+  kong-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"    # Gateway proxy port
+      - "8001:8001"    # Admin API port
+    environment:
+      - KONG_DATABASE=off
+      - KONG_DECLARATIVE_CONFIG=/usr/local/kong/declarative/kong.yml
+      - KONG_PROXY_ACCESS_LOG=/dev/stdout
+      - KONG_ADMIN_ACCESS_LOG=/dev/stdout
+      - KONG_PROXY_ERROR_LOG=/dev/stderr
+      - KONG_ADMIN_ERROR_LOG=/dev/stderr
+      - KONG_ADMIN_LISTEN=0.0.0.0:8001
+      - KONG_PROXY_LISTEN=0.0.0.0:8000
+      - KONG_LOG_LEVEL=info
+    volumes:
+      - ./api-gateway/kong.yml:/usr/local/kong/declarative/kong.yml:ro
+    depends_on:
+      - user-service
+      - product-service
+      - store-service
+      - stock-service
+      - sales-service
+      - refund-service
+      - cart-service
+    restart: unless-stopped
+    profiles:
+      - kong
+
 volumes:
   postgres_data:
   redis_data:
-  prometheus_data:
-  grafana_data:
+
 
 networks:
   default:

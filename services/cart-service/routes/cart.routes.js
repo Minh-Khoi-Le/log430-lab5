@@ -16,7 +16,7 @@ import express from 'express';
 import { 
   authenticate,
   validateId
-} from '@log430/shared';
+} from '../../shared/index.js';
 
 import * as cartController from '../controllers/cart.controller.js';
 
@@ -26,55 +26,61 @@ const router = express.Router();
  * Cart Management Routes
  */
 
-// Get user's cart
-router.get('/:userId',
+// Create new cart
+router.post('/',
   authenticate,
-  validateId('userId'),
+  cartController.createCart
+);
+
+// Get user's cart
+router.get('/:cartId',
+  authenticate,
+  validateId('cartId'),
   cartController.getCart
 );
 
 // Add item to cart
-router.post('/:userId/items',
+router.post('/:cartId/items',
   authenticate,
-  validateId('userId'),
-  cartController.addItem
+  validateId('cartId'),
+  cartController.addItemToCart
 );
 
 // Update item quantity in cart
-router.put('/:userId/items/:productId',
+router.put('/:cartId/items/:itemId',
   authenticate,
-  validateId('userId'),
-  validateId('productId'),
-  cartController.updateItem
+  validateId('cartId'),
+  validateId('itemId'),
+  cartController.updateCartItem
 );
 
 // Remove item from cart
-router.delete('/:userId/items/:productId',
+router.delete('/:cartId/items/:itemId',
   authenticate,
-  validateId('userId'),
-  validateId('productId'),
-  cartController.removeItem
+  validateId('cartId'),
+  validateId('itemId'),
+  cartController.removeItemFromCart
 );
 
 // Clear entire cart
-router.delete('/:userId',
+router.delete('/:cartId',
   authenticate,
-  validateId('userId'),
+  validateId('cartId'),
   cartController.clearCart
 );
 
 // Prepare cart for checkout
-router.post('/:userId/checkout',
+router.post('/:cartId/checkout',
   authenticate,
-  validateId('userId'),
+  validateId('cartId'),
   cartController.prepareCheckout
 );
 
-// Get cart summary (items count, total price)
-router.get('/:userId/summary',
+// Get cart statistics
+router.get('/:cartId/statistics',
   authenticate,
-  validateId('userId'),
-  cartController.getCartSummary
+  validateId('cartId'),
+  cartController.getCartStatistics
 );
 
 export default router;

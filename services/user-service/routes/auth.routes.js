@@ -12,37 +12,30 @@
  */
 
 import express from 'express';
-import bcrypt from 'bcrypt';
 import { body, validationResult } from 'express-validator';
-import { PrismaClient } from '@prisma/client';
 import { 
   generateAccessToken, 
   generateRefreshToken, 
   verifyToken,
-  authenticate 
-} from '@log430/shared/middleware/auth.js';
-import { logger } from '@log430/shared/utils/logger.js';
-import { 
-  ValidationError, 
-  UnauthorizedError, 
-  ConflictError,
-  asyncHandler 
-} from '@log430/shared/middleware/errorHandler.js';
+  authenticate,
+  logger,
+  BaseError,
+  asyncHandler
+} from '../../shared/index.js';
+import { UserService } from '../services/user.service.js';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
-// Password hashing configuration
-const SALT_ROUNDS = 12;
+// Password hashing configuration removed - now handled in UserService
 
 /**
  * Validation Rules
  */
 const loginValidation = [
   body('email')
-    .isEmail()
-    .withMessage('Valid email is required')
-    .normalizeEmail(),
+    .isLength({ min: 1 })
+    .withMessage('Username/email is required')
+    .trim(),
   body('password')
     .isLength({ min: 1 })
     .withMessage('Password is required')
@@ -84,7 +77,7 @@ const refreshTokenValidation = [
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new BaseError('Validation failed', 400, { errors: errors.array() });
   }
   next();
 };
@@ -101,62 +94,26 @@ router.post('/login',
     
     logger.info('Login attempt', { email, ip: req.ip });
     
-    try {
-      // Find user by email
-      const user = await prisma.user.findUnique({
-        where: { email }
-      });
-      
-      if (!user) {
-        logger.auth(email, false, 'User not found');
-        throw new UnauthorizedError('Invalid credentials');
-      }
-      
-      if (!user.isActive) {
-        logger.auth(email, false, 'Account inactive');
-        throw new UnauthorizedError('Account is inactive');
-      }
-      
-      // Verify password
-      const isPasswordValid = await bcrypt.compare(password, user.password);
-      
-      if (!isPasswordValid) {
-        logger.auth(email, false, 'Invalid password');
-        throw new UnauthorizedError('Invalid credentials');
-      }
-      
-      // Generate tokens
-      const accessToken = generateAccessToken(user);
-      const refreshToken = generateRefreshToken(user);
-      
-      // Update last login
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { lastLoginAt: new Date() }
-      });
-      
-      // Record successful authentication
-      logger.auth(email, true);
-      
-      // Return user data and tokens (excluding password)
-      const { password: _, ...userWithoutPassword } = user;
-      
-      res.json({
-        success: true,
-        message: 'Login successful',
-        data: {
-          user: userWithoutPassword,
-          tokens: {
-            access: accessToken,
-            refresh: refreshToken
-          }
-        },
-        timestamp: new Date().toISOString()
-      });
-      
-    } catch (error) {
-      throw error;
-    }
+    // Authenticate user using UserService
+    const user = await UserService.authenticateUser(email, password);
+    
+    // Generate tokens
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    
+    // Return user data and tokens
+    res.json({
+      success: true,
+      message: 'Login successful',
+      data: {
+        user,
+        tokens: {
+          access: accessToken,
+          refresh: refreshToken
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
   })
 );
 
@@ -172,58 +129,31 @@ router.post('/register',
     
     logger.info('Registration attempt', { email, role, ip: req.ip });
     
-    try {
-      // Check if user already exists
-      const existingUser = await prisma.user.findUnique({
-        where: { email }
-      });
-      
-      if (existingUser) {
-        logger.register(email, role, false);
-        throw new ConflictError('Email already registered');
-      }
-      
-      // Hash password
-      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-      
-      // Create user
-      const user = await prisma.user.create({
-        data: {
-          email,
-          password: hashedPassword,
-          role,
-          firstName,
-          lastName,
-          isActive: true
+    // Register user using UserService
+    const user = await UserService.registerUser({
+      email,
+      password,
+      role,
+      firstName,
+      lastName
+    });
+    
+    // Generate tokens
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+    
+    res.status(201).json({
+      success: true,
+      message: 'User registered successfully',
+      data: {
+        user,
+        tokens: {
+          access: accessToken,
+          refresh: refreshToken
         }
-      });
-      
-      // Generate tokens
-      const accessToken = generateAccessToken(user);
-      const refreshToken = generateRefreshToken(user);
-      
-      // Record successful registration
-      logger.register(email, role, true);
-      
-      // Return user data and tokens (excluding password)
-      const { password: _, ...userWithoutPassword } = user;
-      
-      res.status(201).json({
-        success: true,
-        message: 'Registration successful',
-        data: {
-          user: userWithoutPassword,
-          tokens: {
-            access: accessToken,
-            refresh: refreshToken
-          }
-        },
-        timestamp: new Date().toISOString()
-      });
-      
-    } catch (error) {
-      throw error;
-    }
+      },
+      timestamp: new Date().toISOString()
+    });
   })
 );
 
@@ -239,46 +169,39 @@ router.post('/refresh',
     
     logger.info('Token refresh attempt', { ip: req.ip });
     
-    try {
-      // Verify refresh token
-      const decoded = verifyToken(refreshToken);
-      
-      if (decoded.type !== 'refresh') {
-        throw new UnauthorizedError('Invalid token type');
-      }
-      
-      // Get user from database
-      const user = await prisma.user.findUnique({
-        where: { id: decoded.id }
-      });
-      
-      if (!user || !user.isActive) {
-        throw new UnauthorizedError('User not found or inactive');
-      }
-      
-      // Generate new access token
-      const newAccessToken = generateAccessToken(user);
-      
-      logger.info('Token refreshed successfully', { 
-        userId: user.id, 
-        email: user.email 
-      });
-      
-      res.json({
-        success: true,
-        message: 'Token refreshed successfully',
-        data: {
-          tokens: {
-            access: newAccessToken,
-            refresh: refreshToken // Return the same refresh token
-          }
-        },
-        timestamp: new Date().toISOString()
-      });
-      
-    } catch (error) {
-      throw error;
+    // Verify refresh token
+    const decoded = verifyToken(refreshToken);
+    
+    if (decoded.type !== 'refresh') {
+      throw new BaseError('Invalid token type', 401);
     }
+    
+    // Get user from database using UserService
+    const user = await UserService.getUserById(decoded.id);
+    
+    if (!user.isActive) {
+      throw new BaseError('User account is inactive', 401);
+    }
+    
+    // Generate new access token
+    const newAccessToken = generateAccessToken(user);
+    
+    logger.info('Token refreshed successfully', { 
+      userId: user.id, 
+      email: user.email 
+    });
+    
+    res.json({
+      success: true,
+      message: 'Token refreshed successfully',
+      data: {
+        tokens: {
+          access: newAccessToken,
+          refresh: refreshToken // Return the same refresh token
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
   })
 );
 
@@ -309,25 +232,8 @@ router.post('/logout',
 router.get('/me',
   authenticate,
   asyncHandler(async (req, res) => {
-    // Get fresh user data from database
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        firstName: true,
-        lastName: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        lastLoginAt: true
-      }
-    });
-    
-    if (!user) {
-      throw new UnauthorizedError('User not found');
-    }
+    // Get fresh user data from database using UserService
+    const user = await UserService.getUserById(req.user.id);
     
     res.json({
       success: true,

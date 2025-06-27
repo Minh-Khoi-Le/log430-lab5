@@ -11,26 +11,17 @@
  */
 
 import express from 'express';
-import bcrypt from 'bcrypt';
 import { body, param, query, validationResult } from 'express-validator';
-import { PrismaClient } from '@prisma/client';
 import { 
   authenticate, 
-  requireManager 
-} from '@log430/shared/middleware/auth.js';
-import { logger } from '@log430/shared/utils/logger.js';
-import { 
-  ValidationError, 
-  NotFoundError,
-  ConflictError,
-  asyncHandler 
-} from '@log430/shared/middleware/errorHandler.js';
+  requireManager,
+  logger,
+  BaseError,
+  asyncHandler
+} from '../../shared/index.js';
+import { UserService } from '../services/user.service.js';
 
 const router = express.Router();
-const prisma = new PrismaClient();
-
-// Password hashing configuration
-const SALT_ROUNDS = 12;
 
 /**
  * Validation Rules
@@ -80,7 +71,7 @@ const userStatusValidation = [
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    throw new ValidationError('Validation failed', errors.array());
+    throw new BaseError('Validation failed', 400, { errors: errors.array() });
   }
   next();
 };
@@ -92,24 +83,7 @@ const handleValidationErrors = (req, res, next) => {
 router.get('/profile',
   authenticate,
   asyncHandler(async (req, res) => {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        firstName: true,
-        lastName: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        lastLoginAt: true
-      }
-    });
-    
-    if (!user) {
-      throw new NotFoundError('User not found');
-    }
+    const user = await UserService.getUserById(req.user.id);
     
     logger.info('User profile retrieved', { 
       userId: user.id, 
@@ -143,56 +117,24 @@ router.put('/profile',
       updates: Object.keys(req.body)
     });
     
-    try {
-      // Check if email is being changed and if it's already taken
-      if (email && email !== req.user.email) {
-        const existingUser = await prisma.user.findUnique({
-          where: { email }
-        });
-        
-        if (existingUser) {
-          throw new ConflictError('Email already in use');
-        }
-      }
-      
-      // Update user profile
-      const updatedUser = await prisma.user.update({
-        where: { id: userId },
-        data: {
-          ...(firstName && { firstName }),
-          ...(lastName && { lastName }),
-          ...(email && { email }),
-          updatedAt: new Date()
-        },
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          firstName: true,
-          lastName: true,
-          isActive: true,
-          createdAt: true,
-          updatedAt: true,
-          lastLoginAt: true
-        }
-      });
-      
-      logger.info('Profile updated successfully', { 
-        userId, 
-        email: updatedUser.email 
-      });
-      
-      res.json({
-        success: true,
-        message: 'Profile updated successfully',
-        data: { user: updatedUser },
-        timestamp: new Date().toISOString()
-      });
-      
-    } catch (error) {
-      recordUserOperation('profile_update', 'failure');
-      throw error;
-    }
+    // Update user profile using UserService
+    const updatedUser = await UserService.updateUserProfile(userId, {
+      ...(firstName && { firstName }),
+      ...(lastName && { lastName }),
+      ...(email && { email })
+    });
+    
+    logger.info('Profile updated successfully', { 
+      userId, 
+      email: updatedUser.email 
+    });
+    
+    res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: { user: updatedUser },
+      timestamp: new Date().toISOString()
+    });
   })
 );
 
@@ -213,53 +155,19 @@ router.post('/change-password',
       email: req.user.email 
     });
     
-    try {
-      // Get current user with password
-      const user = await prisma.user.findUnique({
-        where: { id: userId }
-      });
-      
-      if (!user) {
-        throw new NotFoundError('User not found');
-      }
-      
-      // Verify current password
-      const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
-      
-      if (!isCurrentPasswordValid) {
-        recordUserOperation('password_change', 'failure');
-        throw new UnauthorizedError('Current password is incorrect');
-      }
-      
-      // Hash new password
-      const hashedNewPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
-      
-      // Update password
-      await prisma.user.update({
-        where: { id: userId },
-        data: { 
-          password: hashedNewPassword,
-          updatedAt: new Date()
-        }
-      });
-      
-      recordUserOperation('password_change', 'success');
-      
-      logger.info('Password changed successfully', { 
-        userId, 
-        email: user.email 
-      });
-      
-      res.json({
-        success: true,
-        message: 'Password changed successfully',
-        timestamp: new Date().toISOString()
-      });
-      
-    } catch (error) {
-      recordUserOperation('password_change', 'failure');
-      throw error;
-    }
+    // Change password using UserService
+    await UserService.changePassword(userId, currentPassword, newPassword);
+    
+    logger.info('Password changed successfully', { 
+      userId, 
+      email: req.user.email 
+    });
+    
+    res.json({
+      success: true,
+      message: 'Password changed successfully',
+      timestamp: new Date().toISOString()
+    });
   })
 );
 
@@ -273,57 +181,20 @@ router.get('/',
   asyncHandler(async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-    const search = req.query.search;
     const role = req.query.role;
     const isActive = req.query.isActive;
     
-    // Build filter conditions
-    const where = {};
+    // Build filter options
+    const options = { page, limit };
+    if (role) options.role = role;
+    if (isActive !== undefined) options.isActive = isActive === 'true';
     
-    if (search) {
-      where.OR = [
-        { email: { contains: search, mode: 'insensitive' } },
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } }
-      ];
-    }
-    
-    if (role) {
-      where.role = role;
-    }
-    
-    if (isActive !== undefined) {
-      where.isActive = isActive === 'true';
-    }
-    
-    // Get users with pagination
-    const [users, totalCount] = await Promise.all([
-      prisma.user.findMany({
-        where,
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          firstName: true,
-          lastName: true,
-          isActive: true,
-          createdAt: true,
-          updatedAt: true,
-          lastLoginAt: true
-        },
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' }
-      }),
-      prisma.user.count({ where })
-    ]);
-    
-    recordUserOperation('user_list', 'success');
+    // Get users using UserService
+    const result = await UserService.getAllUsers(options);
     
     logger.info('User list retrieved', { 
       requestedBy: req.user.email,
-      totalUsers: totalCount,
+      totalUsers: result.total,
       page,
       limit
     });
@@ -332,12 +203,12 @@ router.get('/',
       success: true,
       message: 'Users retrieved successfully',
       data: {
-        users,
+        users: result.users,
         pagination: {
-          page,
-          limit,
-          total: totalCount,
-          pages: Math.ceil(totalCount / limit)
+          page: result.page,
+          limit: result.limit,
+          total: result.total,
+          pages: result.totalPages
         }
       },
       timestamp: new Date().toISOString()
@@ -356,26 +227,8 @@ router.get('/:userId',
   asyncHandler(async (req, res) => {
     const { userId } = req.params;
     
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        firstName: true,
-        lastName: true,
-        isActive: true,
-        createdAt: true,
-        updatedAt: true,
-        lastLoginAt: true
-      }
-    });
-    
-    if (!user) {
-      throw new NotFoundError('User not found');
-    }
-    
-    recordUserOperation('user_view', 'success');
+    // Get user using UserService
+    const user = await UserService.getUserById(userId);
     
     logger.info('User retrieved', { 
       requestedBy: req.user.email,
@@ -411,45 +264,21 @@ router.put('/:userId/status',
       newStatus: isActive
     });
     
-    try {
-      const updatedUser = await prisma.user.update({
-        where: { id: userId },
-        data: { 
-          isActive,
-          updatedAt: new Date()
-        },
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          firstName: true,
-          lastName: true,
-          isActive: true,
-          createdAt: true,
-          updatedAt: true,
-          lastLoginAt: true
-        }
-      });
-      
-      recordUserOperation('user_status_update', 'success');
-      
-      logger.info('User status updated successfully', { 
-        requestedBy: req.user.email,
-        targetUser: updatedUser.email,
-        newStatus: isActive
-      });
-      
-      res.json({
-        success: true,
-        message: `User ${isActive ? 'activated' : 'deactivated'} successfully`,
-        data: { user: updatedUser },
-        timestamp: new Date().toISOString()
-      });
-      
-    } catch (error) {
-      recordUserOperation('user_status_update', 'failure');
-      throw error;
-    }
+    // Update user status using UserService
+    const updatedUser = await UserService.updateUserStatus(userId, isActive);
+    
+    logger.info('User status updated successfully', { 
+      requestedBy: req.user.email,
+      targetUser: updatedUser.email,
+      newStatus: isActive
+    });
+    
+    res.json({
+      success: true,
+      message: `User ${isActive ? 'activated' : 'deactivated'} successfully`,
+      data: { user: updatedUser },
+      timestamp: new Date().toISOString()
+    });
   })
 );
 
@@ -461,38 +290,8 @@ router.get('/stats/overview',
   authenticate,
   requireManager,
   asyncHandler(async (req, res) => {
-    const [
-      totalUsers,
-      activeUsers,
-      clientUsers,
-      managerUsers,
-      recentRegistrations
-    ] = await Promise.all([
-      prisma.user.count(),
-      prisma.user.count({ where: { isActive: true } }),
-      prisma.user.count({ where: { role: 'client' } }),
-      prisma.user.count({ where: { role: 'manager' } }),
-      prisma.user.count({
-        where: {
-          createdAt: {
-            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
-          }
-        }
-      })
-    ]);
-    
-    const stats = {
-      totalUsers,
-      activeUsers,
-      inactiveUsers: totalUsers - activeUsers,
-      usersByRole: {
-        client: clientUsers,
-        manager: managerUsers
-      },
-      recentRegistrations
-    };
-    
-    recordUserOperation('user_stats', 'success');
+    // Get user statistics using UserService
+    const stats = await UserService.getUserStats();
     
     logger.info('User statistics retrieved', { 
       requestedBy: req.user.email,

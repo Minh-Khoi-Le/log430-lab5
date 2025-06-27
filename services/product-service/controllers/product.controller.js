@@ -20,8 +20,7 @@
  */
 
 import * as service from '../services/product.service.js';
-import { recordError } from '../middleware/metrics.js';
-import { invalidateCache } from '../utils/cacheInvalidation.js';
+import { recordError, deleteMultipleFromCache } from '../../shared/index.js';
 
 /**
  * List Products Controller
@@ -146,7 +145,7 @@ export async function create(req, res, next) {
     const product = await service.create(productData);
     
     // Invalidate relevant caches
-    await invalidateCache(['products', 'product-catalog']);
+    await deleteMultipleFromCache(['products', 'product-catalog']);
     
     // Return created product with 201 status
     res.status(201).json({
@@ -189,7 +188,7 @@ export async function update(req, res, next) {
     }
     
     // Invalidate relevant caches
-    await invalidateCache(['products', 'product-catalog', `product-${productId}`]);
+    await deleteMultipleFromCache(['products', 'product-catalog', `product-${productId}`]);
     
     // Return updated product
     res.json({
@@ -231,7 +230,7 @@ export async function remove(req, res, next) {
     }
     
     // Invalidate relevant caches
-    await invalidateCache(['products', 'product-catalog', `product-${productId}`]);
+    await deleteMultipleFromCache(['products', 'product-catalog', `product-${productId}`]);
     
     // Return success with 204 No Content
     res.status(204).send();

@@ -1,5 +1,5 @@
 /**
- * User Service Main Server - Simplified version without Prisma queries
+ * User Service Main Server
  */
 
 import express from 'express';
@@ -12,8 +12,13 @@ import {
   config,
   logger,
   errorHandler,
-  notFoundHandler
-} from '@log430/shared';
+  notFoundHandler,
+  healthCheck
+} from '../shared/index.js';
+
+// Import routes
+import authRoutes from './routes/auth.routes.js';
+import userRoutes from './routes/user.routes.js';
 
 // Initialize Express app
 const app = express();
@@ -24,7 +29,11 @@ app.use(express.json());
 async function initializeApp() {
   try {
     // Initialize all shared services first
-    await initializeSharedServices();
+    await initializeSharedServices({
+      serviceName: 'user-service',
+      enableDatabase: true,
+      enableDatabaseLogging: process.env.NODE_ENV === 'development'
+    });
     
     // Get service configuration
     const serviceName = config.get('service.name', 'user-service');
@@ -44,101 +53,43 @@ async function initializeApp() {
     app.get('/', (req, res) => {
       res.json({
         service: serviceName,
-        version: '1.0.0',
-        description: 'User authentication and management microservice (simplified)',
+        version: '2.0.0',
+        description: 'User authentication and management microservice',
         pod: os.hostname(),
         status: 'running'
       });
     });
 
-    // Simple user API
-    app.post('/auth/login', (req, res) => {
-      const { email, password } = req.body;
-      
-      // Very basic login simulation
-      if (email === 'user@example.com' && password === 'password') {
-        res.json({
-          success: true,
-          data: {
-            user: {
-              id: 1,
-              email: 'user@example.com',
-              name: 'Test User',
-              role: 'client'
-            },
-            token: 'sample-jwt-token-would-be-here',
-            refreshToken: 'sample-refresh-token-would-be-here'
-          },
-          message: 'Login successful',
-          service: serviceName
-        });
-      } else {
-        res.status(401).json({
-          success: false,
-          error: 'Invalid credentials',
-          message: 'Email or password is incorrect',
-          service: serviceName
-        });
-      }
-    });
-
-    app.post('/auth/register', (req, res) => {
-      const { email, password, name } = req.body;
-      
-      if (!email || !password || !name) {
-        return res.status(400).json({
-          success: false,
-          error: 'Invalid input',
-          message: 'Email, password, and name are required',
-          service: serviceName
-        });
-      }
-      
-      res.status(201).json({
-        success: true,
-        data: {
-          user: {
-            id: 999,
-            email,
-            name,
-            role: 'client',
-            createdAt: new Date().toISOString()
-          },
-          token: 'sample-jwt-token-would-be-here',
-          refreshToken: 'sample-refresh-token-would-be-here'
-        },
-        message: 'User registered successfully',
-        service: serviceName
-      });
-    });
-
-    app.get('/users/profile', (req, res) => {
-      // Normally would verify token here
-      res.json({
-        success: true,
-        data: {
-          id: 1,
-          email: 'user@example.com',
-          name: 'Test User',
-          role: 'client',
-          createdAt: '2025-01-01T00:00:00Z',
-          updatedAt: '2025-01-01T00:00:00Z'
-        },
-        message: 'User profile retrieved successfully',
-        service: serviceName
-      });
-    });
+    // API routes
+    app.use('/auth', authRoutes);
+    app.use('/users', userRoutes);
+    app.use('/api/auth', authRoutes);
+    app.use('/api/users', userRoutes);
 
     // Health check endpoint - used by load balancers and service discovery
     app.get('/health', async (req, res) => {
-      res.status(200).json({
-        status: 'healthy',
-        service: serviceName,
-        timestamp: new Date().toISOString(),
-        pod: os.hostname(),
-        environment: process.env.NODE_ENV || 'development',
-        uptime: process.uptime()
-      });
+      try {
+        // Use the shared health check that includes database status
+        const healthStatus = await healthCheck();
+        res.status(200).json({
+          status: 'healthy',
+          service: serviceName,
+          timestamp: new Date().toISOString(),
+          pod: os.hostname(),
+          environment: process.env.NODE_ENV || 'development',
+          uptime: process.uptime(),
+          ...healthStatus
+        });
+      } catch (error) {
+        logger.error('Health check failed', { error: error.message });
+        res.status(503).json({
+          status: 'unhealthy',
+          service: serviceName,
+          timestamp: new Date().toISOString(),
+          pod: os.hostname(),
+          error: error.message
+        });
+      }
     });
 
     // 404 handler for unmatched routes

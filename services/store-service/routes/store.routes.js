@@ -29,7 +29,7 @@ import {
   authenticate,
   authorize,
   validateId
-} from '@log430/shared';
+} from '../../shared/index.js';
 
 const router = express.Router();
 
@@ -39,20 +39,20 @@ const router = express.Router();
 
 // Get all stores with pagination and filtering
 router.get('/',
-  StoreController.getAllStores
+  StoreController.list
 );
 
 // Get store by ID
 router.get('/:id',
   validateId('id'),
-  StoreController.getStoreById
+  StoreController.get
 );
 
 // Create new store (admin only)
 router.post('/',
   authenticate,
   authorize(['admin']),
-  StoreController.createStore
+  StoreController.create
 );
 
 // Update store (admin only)
@@ -60,7 +60,7 @@ router.put('/:id',
   authenticate,
   authorize(['admin']),
   validateId('id'),
-  StoreController.updateStore
+  StoreController.update
 );
 
 // Delete store (admin only)
@@ -68,28 +68,28 @@ router.delete('/:id',
   authenticate,
   authorize(['admin']),
   validateId('id'),
-  StoreController.deleteStore
+  StoreController.remove
 );
 
 // Get store statistics
 router.get('/:id/stats',
   authenticate,
   validateId('id'),
-  StoreController.getStoreStats
+  StoreController.getStats
 );
 
 // Get store inventory summary
 router.get('/:id/inventory',
   authenticate,
   validateId('id'),
-  StoreController.getStoreInventory
+  (req, res) => res.status(501).json({ message: 'Not implemented - requires stock service integration' })
 );
 
 // Get store sales summary
 router.get('/:id/sales',
   authenticate,
   validateId('id'),
-  StoreController.getStoreSales
+  (req, res) => res.status(501).json({ message: 'Not implemented - requires sales service integration' })
 );
 
 export default router;

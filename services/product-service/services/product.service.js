@@ -16,10 +16,12 @@
  * keeping business logic separate from data access concerns.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { getDatabaseClient, DatabaseUtils, BaseError } from '../../shared/index.js';
 
-// Initialize Prisma client
-const prisma = new PrismaClient();
+// Get the shared database client
+function getPrisma() {
+  return getDatabaseClient('product-service');
+}
 
 /**
  * List Products Service
@@ -53,12 +55,9 @@ export async function list(options) {
   // Build where clause for filtering
   const where = {};
   
-  // Search filter - matches product name or description
+  // Search filter - use shared utility
   if (search) {
-    where.OR = [
-      { name: { contains: search, mode: 'insensitive' } },
-      { description: { contains: search, mode: 'insensitive' } }
-    ];
+    Object.assign(where, DatabaseUtils.buildTextSearchWhere(search, ['name', 'description']));
   }
   
   // Price range filters
@@ -68,24 +67,14 @@ export async function list(options) {
     if (maxPrice !== undefined) where.price.lte = maxPrice;
   }
 
-  // Build orderBy clause for sorting
-  let orderBy = { id: 'asc' }; // Default sort
-  
-  if (sort) {
-    const direction = sort.startsWith('-') ? 'desc' : 'asc';
-    const field = sort.replace(/^[+-]/, '');
-    
-    // Validate sort field
-    if (['name', 'price', 'id'].includes(field)) {
-      orderBy = { [field]: direction };
-    }
-  }
+  // Build orderBy clause for sorting - use shared utility
+  const orderBy = DatabaseUtils.buildOrderBy(sort, ['name', 'price', 'id']);
 
   // Get total count for pagination
-  const total = await prisma.product.count({ where });
+  const total = await getPrisma().product.count({ where });
   
   // Get products
-  const products = await prisma.product.findMany({
+  const products = await getPrisma().product.findMany({
     where,
     orderBy,
     skip: offset,
@@ -102,20 +91,11 @@ export async function list(options) {
   });
 
   // Calculate pagination metadata
-  const pages = Math.ceil(total / limit);
-  const hasNext = page < pages;
-  const hasPrev = page > 1;
+  const pagination = DatabaseUtils.buildPaginationMetadata(page, limit, total);
 
   return {
     products,
-    pagination: {
-      page,
-      size: limit,
-      total,
-      pages,
-      hasNext,
-      hasPrev
-    }
+    pagination
   };
 }
 
@@ -128,7 +108,7 @@ export async function list(options) {
  * @returns {Promise<Object|null>} - Promise resolving to product object or null
  */
 export async function get(id) {
-  const product = await prisma.product.findUnique({
+  const product = await getPrisma().product.findUnique({
     where: { id: parseInt(id) },
     include: {
       stocks: {
@@ -183,15 +163,15 @@ export async function get(id) {
 export async function create(data) {
   // Validate required fields
   if (!data.name || typeof data.name !== 'string' || data.name.trim().length === 0) {
-    throw new Error('Product name is required and cannot be empty');
+    throw new BaseError('Product name is required and cannot be empty', 400);
   }
   
   if (data.price === undefined || data.price === null || data.price < 0) {
-    throw new Error('Product price is required and must be non-negative');
+    throw new BaseError('Product price is required and must be non-negative', 400);
   }
 
   // Use transaction to create product and initialize stock
-  return prisma.$transaction(async (tx) => {
+  return getPrisma().$transaction(async (tx) => {
     // Create the product
     const product = await tx.product.create({
       data: {
@@ -251,14 +231,14 @@ export async function update(id, data) {
   
   if (data.name !== undefined) {
     if (typeof data.name !== 'string' || data.name.trim().length === 0) {
-      throw new Error('Product name cannot be empty');
+      throw new BaseError('Product name cannot be empty', 400);
     }
     updateData.name = data.name.trim();
   }
   
   if (data.price !== undefined) {
     if (data.price < 0) {
-      throw new Error('Product price must be non-negative');
+      throw new BaseError('Product price must be non-negative', 400);
     }
     updateData.price = parseFloat(data.price);
   }
@@ -272,7 +252,7 @@ export async function update(id, data) {
     return get(id);
   }
 
-  return prisma.product.update({
+  return getPrisma().product.update({
     where: { id: parseInt(id) },
     data: updateData,
     include: {
@@ -297,19 +277,24 @@ export async function update(id, data) {
  * @returns {Promise<boolean>} - Promise resolving to true if deleted, false if not found
  */
 export async function remove(id) {
-  return prisma.$transaction(async (tx) => {
-    // First, delete stock entries
-    await tx.stock.deleteMany({
-      where: { productId: parseInt(id) }
-    });
+  try {
+    return getPrisma().$transaction(async (tx) => {
+      // First, delete stock entries
+      await tx.stock.deleteMany({
+        where: { productId: parseInt(id) }
+      });
 
-    // Then delete the product
-    await tx.product.delete({
-      where: { id: parseInt(id) }
-    });
+      // Then delete the product
+      await tx.product.delete({
+        where: { id: parseInt(id) }
+      });
 
-    return true;
-  });
+      return true;
+    });
+  } catch (error) {
+    // Use shared database error handling
+    DatabaseUtils.handlePrismaError(error, 'product-service');
+  }
 }
 
 /**
@@ -321,7 +306,7 @@ export async function remove(id) {
  * @returns {Promise<Object|null>} - Promise resolving to availability data or null
  */
 export async function getAvailability(id) {
-  const product = await prisma.product.findUnique({
+  const product = await getPrisma().product.findUnique({
     where: { id: parseInt(id) },
     select: {
       id: true,
@@ -419,9 +404,9 @@ export async function search(criteria) {
     });
   }
 
-  const total = await prisma.product.count({ where });
+  const total = await getPrisma().product.count({ where });
   
-  const products = await prisma.product.findMany({
+  const products = await getPrisma().product.findMany({
     where,
     skip: offset,
     take: limit,
@@ -454,5 +439,5 @@ export async function search(criteria) {
  * @returns {PrismaClient} - Prisma client instance
  */
 export function getPrismaClient() {
-  return prisma;
+  return getPrisma();
 }

@@ -31,7 +31,7 @@ import {
   cacheMiddleware,
   recordOperation,
   asyncHandler
-} from '@log430/shared';
+} from '../../shared/index.js';
 
 const router = express.Router();
 

@@ -21,6 +21,9 @@
     - [Option 1: Microservices with API Gateway (Recommended)](#option-1-microservices-with-api-gateway-recommended)
     - [Option 2: With Internal Security (Advanced)](#option-2-with-internal-security-advanced)
     - [Option 3: Load Balanced Services](#option-3-load-balanced-services)
+    - [With Kong API Gateway (Recommended)](#with-kong-api-gateway-recommended)
+    - [To stop all services](#to-stop-all-services)
+    - [Manual Start](#manual-start)
   - [Microservices Deployment](#microservices-deployment)
     - [Individual Service Ports](#individual-service-ports)
     - [Service Health Checks](#service-health-checks)
@@ -250,6 +253,58 @@ Scripts are now organized by deployment type:
    test-loadbalancing.bat
    ```
 
+### With Kong API Gateway (Recommended)
+To start the entire system with Kong API Gateway providing load balancing:
+
+```
+scripts\start-with-kong.bat
+```
+
+This will:
+1. Start all microservices
+2. Start Kong API Gateway with load balancing
+3. Start the frontend client
+
+### To stop all services
+To stop all running services and clean up resources:
+
+```
+scripts\stop-all-services.bat
+```
+
+### Manual Start
+If you prefer to start services individually:
+
+1. Start the backend services:
+   ```
+   docker-compose up -d
+   ```
+
+2. Start Kong API Gateway:
+   ```
+   scripts\docker\start-kong-simple.bat
+   ```
+
+3. Start the frontend:
+   ```
+   scripts\docker\start-frontend.bat
+   ```
+
+## Access Points
+
+- **Frontend**: http://localhost:5173 (or the port shown in the frontend window)
+- **API Gateway**: http://localhost:8000
+- **API Admin**: http://localhost:8001
+
+### Services via API Gateway
+- Products: http://localhost:8000/products
+- Users: http://localhost:8000/users
+- Auth: http://localhost:8000/auth
+- Stores: http://localhost:8000/stores
+- Stock: http://localhost:8000/stock
+- Sales: http://localhost:8000/sales
+- Cart: http://localhost:8000/cart
+
 ## Microservices Deployment
 
 ### Individual Service Ports
@@ -341,15 +396,13 @@ run-k6-tests.bat
 
 scripts\cleanup-k8s.bat
 
-````
-
 ## Local Development
 
 ```bash
 # To run the server
 cd server
 npm run start
-````
+```
 
 ```bash
 # To run the web application

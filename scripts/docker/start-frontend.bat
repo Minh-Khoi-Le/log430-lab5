@@ -1,39 +1,36 @@
 @echo off
-echo =================================================
-echo    LOG430 Lab 5 - Microservices Architecture
-echo    Frontend Client Startup Guide
-echo    ^(Load Balanced Configuration^)
-echo =================================================
+REM Frontend Startup Script for LOG430 Lab 5
+REM This script starts the React frontend app in development mode
+
+echo ========================================
+echo   LOG430 Lab 5 - Frontend Startup
+echo ========================================
 echo.
 
-echo Before starting the frontend, make sure you have:
-echo.
-echo 1. Load Balanced API Gateway running on port 8000
-echo    Run: cd api-gateway && start-gateway.bat
-echo    ^(This now starts load balanced services by default^)
-echo.
-echo 2. All microservices running in load balanced mode:
-echo    - Product Service: 2 instances ^(load balanced^)
-echo    - Stock Service: 2 instances ^(load balanced^)
-echo    - Cart Service: 2 instances ^(load balanced^)
-echo    - User, Store, Sales, Refund Services: 1 instance each
-echo.
-echo 3. Database and Redis running
-echo    ^(Started automatically with the gateway^)
-echo.
+echo Checking if Node.js is installed...
+node --version > nul 2>&1
+if %errorlevel% neq 0 (
+  echo ERROR: Node.js is not installed or not in PATH!
+  echo Please install Node.js and try again.
+  exit /b 1
+)
+echo  Node.js is installed
 
-echo Starting the frontend client...
+echo.
+echo Starting the frontend in development mode...
 echo.
 
 cd /d "%~dp0..\..\client"
+
 echo Installing dependencies...
 call npm install
 
 echo.
-echo Starting development server on http://localhost:3000
-echo The frontend will connect to API Gateway on http://localhost:8000/api
+echo Starting development server...
+npm run dev
+
 echo.
-
-call npm run dev
-
-pause
+echo Frontend development server is starting...
+echo You can access it at: http://localhost:5173 (or the URL shown above)
+echo Press Ctrl+C to stop the server
+echo.

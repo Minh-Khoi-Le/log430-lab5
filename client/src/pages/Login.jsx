@@ -8,11 +8,11 @@
 
 import React, { useState, useEffect } from "react";
 import { useUser } from "../context/UserContext";
-import { apiFetch, API_ENDPOINTS } from "../api";
+import { apiFetch, API_ENDPOINTS, API_BASE } from "../api";
 
 function Login() {
   // State for form fields
-  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [storeId, setStoreId] = useState("");
   const [stores, setStores] = useState([]);
@@ -24,12 +24,25 @@ function Login() {
   useEffect(() => {
     const fetchStores = async () => {
       try {
-        const data = await apiFetch(API_ENDPOINTS.STORES.BASE);
-        console.log('Stores data received:', data); // Debug log
-        if (Array.isArray(data)) {
-          setStores(data);
+        const response = await apiFetch(API_ENDPOINTS.STORES.BASE);
+        console.log('Stores response received:', response); // Debug log
+        console.log('Full API URL called:', `${API_BASE}${API_ENDPOINTS.STORES.BASE}`); // Debug: show full URL
+        console.log('API_BASE:', API_BASE);
+        console.log('STORES.BASE:', API_ENDPOINTS.STORES.BASE);
+        
+        // Handle the API response structure: { success: true, data: { stores: [...], total: 3 } }
+        if (response.success && response.data) {
+          if (Array.isArray(response.data.stores)) {
+            setStores(response.data.stores);
+          } else if (Array.isArray(response.data)) {
+            // Fallback: if data is directly an array
+            setStores(response.data);
+          } else {
+            console.error('Stores data is not in expected format:', response.data);
+            setStores([]);
+          }
         } else {
-          console.error('Stores data is not an array:', data);
+          console.error('API response does not have expected success/data structure:', response);
           setStores([]);
         }
       } catch (error) {
@@ -55,8 +68,8 @@ function Login() {
     setLoading(true);
     
     // Validate form fields
-    if (!name.trim()) {
-      setError("Please enter your name!");
+    if (!username.trim()) {
+      setError("Please enter your username!");
       setLoading(false);
       return;
     }
@@ -66,17 +79,20 @@ function Login() {
       const response = await apiFetch(API_ENDPOINTS.AUTH.LOGIN, {
         method: "POST",
         body: JSON.stringify({
-          name: name.trim(),
-          password: password.trim() || "password",
+          email: username.trim(), // Send username as email since backend expects email field
+          password: password.trim(),
         }),
       });
 
       // Extract token and user data from response
-      const { token, user: userData } = response;
+      const { data } = response;
       
-      if (!token) {
+      if (!data || !data.tokens || !data.tokens.access) {
         throw new Error("No authentication token received");
       }
+      
+      const userData = data.user;
+      const token = data.tokens.access;
       
       // For client role, ensure a store is selected
       if (userData.role === "client" && !storeId) {
@@ -89,7 +105,8 @@ function Login() {
       setUser({
         id: userData.id,
         role: userData.role,
-        name: userData.name,
+        name: userData.firstName || userData.name || username,
+        email: userData.email || username,
         token: token,
         storeId: userData.role === "client" ? parseInt(storeId) : null,
         storeName:
@@ -132,8 +149,8 @@ function Login() {
             </label>
             <input
               type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               placeholder="Enter your username"
               style={{
                 width: "100%",
@@ -248,21 +265,19 @@ function Login() {
             <p style={{ fontWeight: "bold", margin: "0.5rem 0", fontSize: "0.9rem" }}>
               Client:
             </p>
-            <ul style={{ margin: "0", paddingLeft: "1.5rem", fontSize: "0.9rem" }}>
-              <li>Name: <strong>c</strong></li>
-              <li>Password: <strong>c</strong></li>
-              <li>Choose a store</li>
+            <ul style={{ margin: 0, paddingLeft: "1.5rem", fontSize: "0.8rem" }}>
+              <li>Username: c</li>
+              <li>Password: c</li>
             </ul>
           </div>
           
           <div style={{ width: "48%" }}>
             <p style={{ fontWeight: "bold", margin: "0.5rem 0", fontSize: "0.9rem" }}>
-              Manager:
+              Admin:
             </p>
-            <ul style={{ margin: "0", paddingLeft: "1.5rem", fontSize: "0.9rem" }}>
-              <li>Name: <strong>g</strong></li>
-              <li>Password: <strong>g</strong></li>
-              <li>No store needed</li>
+            <ul style={{ margin: 0, paddingLeft: "1.5rem", fontSize: "0.8rem" }}>
+              <li>Username: a</li>
+              <li>Password: a</li>
             </ul>
           </div>
         </div>

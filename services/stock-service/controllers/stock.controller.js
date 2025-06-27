@@ -25,7 +25,7 @@ import {
   logger,
   asyncHandler,
   recordOperation
-} from '@log430/shared';
+} from '../../shared/index.js';
 
 /**
  * Get Stock by Product Controller
@@ -56,7 +56,17 @@ export const getByProduct = asyncHandler(async (req, res) => {
       minQuantity: minQuantity ? parseInt(minQuantity) : undefined
     };
 
-    const stockData = await StockService.getByProduct(productId, options, req.user);
+    // Convert productId to integer
+    const productIdInt = parseInt(productId);
+    if (isNaN(productIdInt)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid product ID format',
+        error: 'VALIDATION_ERROR'
+      });
+    }
+
+    const stockData = await StockService.getStockByProduct(productIdInt, options, req.user);
 
     recordOperation('stock_get_by_product', 'success');
 
@@ -110,7 +120,7 @@ export const getByStore = asyncHandler(async (req, res) => {
       minQuantity: minQuantity ? parseInt(minQuantity) : undefined
     };
 
-    const result = await StockService.getByStore(storeId, options, req.user);
+    const result = await StockService.getStockByStore(storeId, options, req.user);
 
     recordOperation('stock_get_by_store', 'success');
 
@@ -139,12 +149,14 @@ export const updateStock = asyncHandler(async (req, res) => {
   const { storeId, productId } = req.params;
   const { quantity, operation, reason, notes } = req.body;
 
-  // Input validation
-  if (!storeId || isNaN(storeId)) {
+  // Input validation and conversion
+  const storeIdInt = parseInt(storeId);
+  if (!storeId || isNaN(storeIdInt)) {
     throw new ValidationError('Valid store ID is required');
   }
 
-  if (!productId || isNaN(productId)) {
+  const productIdInt = parseInt(productId);
+  if (!productId || isNaN(productIdInt)) {
     throw new ValidationError('Valid product ID is required');
   }
 
@@ -157,8 +169,8 @@ export const updateStock = asyncHandler(async (req, res) => {
   }
 
   logger.info('Updating stock', {
-    storeId,
-    productId,
+    storeId: storeIdInt,
+    productId: productIdInt,
     quantity,
     operation,
     reason,
@@ -176,13 +188,13 @@ export const updateStock = asyncHandler(async (req, res) => {
       userId: req.user?.id
     };
 
-    const stockUpdate = await StockService.updateStock(storeId, productId, updateData, req.user);
+    const stockUpdate = await StockService.updateStock(storeIdInt, productIdInt, updateData, req.user);
 
     recordOperation('stock_update', 'success');
 
     logger.info('Stock updated successfully', {
-      storeId,
-      productId,
+      storeId: storeIdInt,
+      productId: productIdInt,
       previousQuantity: stockUpdate.previousQuantity,
       newQuantity: stockUpdate.newQuantity,
       operation

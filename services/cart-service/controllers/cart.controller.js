@@ -26,7 +26,7 @@ import {
   logger,
   asyncHandler,
   recordOperation
-} from '@log430/shared';
+} from '../../shared/index.js';
 
 /**
  * Create Cart Controller

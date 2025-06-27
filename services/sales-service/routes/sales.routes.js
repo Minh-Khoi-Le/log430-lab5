@@ -21,7 +21,7 @@ import express from 'express';
 import { 
   authenticate,
   validateId
-} from '@log430/shared';
+} from '../../shared/index.js';
 
 import * as salesController from '../controllers/sales.controller.js';
 

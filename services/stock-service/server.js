@@ -26,7 +26,6 @@
 
 import express from 'express';
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
 
 // Import shared components
 import {
@@ -36,9 +35,10 @@ import {
   logger,
   errorHandler,
   notFoundHandler,
+  healthCheck,
   httpMetricsMiddleware,
   metricsHandler
-} from '@log430/shared';
+} from '../shared/index.js';
 
 // Import routes
 import stockRoutes from './routes/stock.routes.js';
@@ -46,18 +46,19 @@ import stockRoutes from './routes/stock.routes.js';
 // Load environment variables
 dotenv.config();
 
-// Initialize Express app and database connection
+// Initialize Express app
 const app = express();
-const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
-});
 
 async function initializeApp() {
   try {
-    // Initialize shared services first
-    await initializeSharedServices();
+    // Initialize shared services including database
+    await initializeSharedServices({
+      serviceName: 'stock-service',
+      enableDatabase: true,
+      enableDatabaseLogging: process.env.NODE_ENV === 'development'
+    });
     
-    const PORT = config.get('PORT') || 3005;
+    const PORT = config.get('service.port') || 3004;
     
     logger.info('Initializing Stock Service...');
 
@@ -70,53 +71,7 @@ async function initializeApp() {
      * Health Check Endpoint
      * Provides comprehensive health status including database and cache connectivity
      */
-    app.get('/health', async (req, res) => {
-      try {
-        const health = {
-          status: 'healthy',
-          timestamp: new Date().toISOString(),
-          service: 'stock-service',
-          version: process.env.npm_package_version || '1.0.0',
-          uptime: process.uptime(),
-          memory: process.memoryUsage(),
-          dependencies: {
-            database: 'checking...',
-            cache: 'checking...'
-          }
-        };
-
-        // Check database connection
-        try {
-          await prisma.$queryRaw`SELECT 1`;
-          health.dependencies.database = 'healthy';
-        } catch (error) {
-          health.dependencies.database = 'unhealthy';
-          health.status = 'degraded';
-          logger.warn('Database health check failed:', error);
-        }
-
-        // Check cache connection (if available)
-        try {
-          const { redisService } = await import('@log430/shared');
-          await redisService.ping();
-          health.dependencies.cache = 'healthy';
-        } catch (error) {
-          health.dependencies.cache = 'unhealthy';
-          logger.warn('Cache health check failed:', error);
-        }
-
-        const statusCode = health.status === 'healthy' ? 200 : 503;
-        res.status(statusCode).json(health);
-      } catch (error) {
-        logger.error('Health check failed:', error);
-        res.status(503).json({
-          status: 'unhealthy',
-          timestamp: new Date().toISOString(),
-          service: 'stock-service',
-          error: error.message
-        });
-      }
-    });
+    app.get('/health', healthCheck('stock-service', ['database', 'redis']));
 
     /**
      * Metrics Endpoint
@@ -126,8 +81,11 @@ async function initializeApp() {
 
     /**
      * API Routes
-     * Mount stock-specific routes under /api/v1/stock
+     * All stock-related endpoints are prefixed with /api
+     * Also providing direct access at /stock for API Gateway
      */
+    app.use('/stock', stockRoutes);
+    app.use('/api/stock', stockRoutes);
     app.use('/api/v1/stock', stockRoutes);
 
     /**
@@ -200,11 +158,11 @@ async function initializeApp() {
      * Initialize the stock service and begin accepting requests
      */
     const server = app.listen(PORT, () => {
-      logger.info(`📦 Stock Service started successfully`);
-      logger.info(`📡 Server running on port ${PORT}`);
-      logger.info(`🔍 Health check available at http://localhost:${PORT}/health`);
-      logger.info(`📊 Metrics available at http://localhost:${PORT}/metrics`);
-      logger.info(`🚀 API endpoints available at http://localhost:${PORT}/api/v1/stock`);
+      logger.info(` Stock Service started successfully`);
+      logger.info(` Server running on port ${PORT}`);
+      logger.info(` Health check available at http://localhost:${PORT}/health`);
+      logger.info(` Metrics available at http://localhost:${PORT}/metrics`);
+      logger.info(` API endpoints available at http://localhost:${PORT}/api/v1/stock`);
     });
 
     return server;

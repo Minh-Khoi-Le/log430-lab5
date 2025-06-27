@@ -1,7 +1,7 @@
 # Kong API Gateway Dockerfile
-# Production-ready Kong setup with declarative configuration
+# Simplified version to avoid permission issues
 
-FROM kong:3.4.2-alpine
+FROM kong:latest
 
 # Set environment variables
 ENV KONG_DATABASE=off \
@@ -12,31 +12,17 @@ ENV KONG_DATABASE=off \
     KONG_ADMIN_ERROR_LOG=/dev/stderr \
     KONG_ADMIN_LISTEN="0.0.0.0:8001" \
     KONG_PROXY_LISTEN="0.0.0.0:8000" \
-    KONG_LOG_LEVEL=info \
-    KONG_PLUGINS="bundled,prometheus"
+    KONG_LOG_LEVEL=info
 
-# Create directories for configuration
+# Create directory for configuration
+USER root
 RUN mkdir -p /usr/local/kong/declarative
 
-# Copy Kong configuration
-COPY kong.yml /usr/local/kong/declarative/kong.yml
-
-# Ensure proper permissions
-RUN chown -R kong:kong /usr/local/kong/declarative
-
-# Switch to kong user for security
-USER kong
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD kong health || exit 1
+# Copy configuration
+COPY kong.yml /usr/local/kong/declarative/
 
 # Expose ports
-# 8000: Proxy port (main API gateway)
-# 8001: Admin API port (management)
-# 8444: Proxy SSL port
-# 8443: Admin SSL port
-EXPOSE 8000 8001 8444 8443
+EXPOSE 8000 8001 8443 8444
 
 # Start Kong
 CMD ["kong", "docker-start"]

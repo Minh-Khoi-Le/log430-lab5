@@ -1,13 +1,26 @@
 {
+  "name": "log430-lab5-monorepo",
+  "version": "1.0.0",
   "private": true,
+  "type": "module",
   "workspaces": [
-    "services/*",
-    "client"
+    "services/*"
   ],
+  "scripts": {
+    "seed": "node prisma/seed.js",
+    "verify-seed": "node prisma/verify-seed.js",
+    "db:reset": "prisma migrate reset --force",
+    "db:push": "prisma db push",
+    "db:generate": "prisma generate"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
   "devDependencies": {
-    "prisma": "^6.10.1"
+    "prisma": "^5.14.0"
   },
   "dependencies": {
-    "@prisma/client": "^6.8.2"
+    "@prisma/client": "^5.14.0",
+    "bcrypt": "^5.1.1"
   }
 }

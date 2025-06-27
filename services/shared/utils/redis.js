@@ -522,4 +522,16 @@ const redisService = new RedisService();
 
 // Export singleton instance and class
 export { redisService, RedisService };
+
+/**
+ * Get the Redis client instance for compatibility
+ * @returns {Object} Redis client instance
+ */
+export function getRedisClient() {
+  if (!redisService.isAvailable()) {
+    throw new Error('Redis service not initialized or not connected');
+  }
+  return redisService.client;
+}
+
 export default redisService;
