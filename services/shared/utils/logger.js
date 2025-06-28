@@ -12,6 +12,25 @@ import winston from 'winston';
 import path from 'path';
 
 /**
+ * Timer class for measuring operation duration
+ */
+class Timer {
+  constructor() {
+    this.startTime = process.hrtime.bigint();
+  }
+
+  /**
+   * Get duration in milliseconds
+   * @returns {number} Duration in milliseconds
+   */
+  getDuration() {
+    const endTime = process.hrtime.bigint();
+    const duration = Number(endTime - this.startTime) / 1000000; // Convert nanoseconds to milliseconds
+    return Math.round(duration * 100) / 100; // Round to 2 decimal places
+  }
+}
+
+/**
  * Log Levels
  */
 const LOG_LEVELS = {
@@ -260,6 +279,13 @@ class Logger {
         this.info(message.trim());
       }
     };
+  }
+
+  /**
+   * Start a timer for measuring duration
+   */
+  startTimer() {
+    return new Timer();
   }
 }
 

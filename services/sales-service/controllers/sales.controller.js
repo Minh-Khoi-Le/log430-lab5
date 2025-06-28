@@ -33,29 +33,47 @@ import {
  * Handles the creation of new sales transactions with comprehensive validation
  */
 export const createSale = asyncHandler(async (req, res) => {
-  const { storeId, customerId, items, paymentMethod, totalAmount, discounts } = req.body;
+  const { storeId, customerId, items, cart, totalAmount, discounts } = req.body;
+
+  // Handle both frontend cart format and direct items format
+  const saleItems = items || cart;
 
   // Basic input validation
-  if (!storeId || !items || !Array.isArray(items) || items.length === 0) {
+  if (!storeId || !saleItems || !Array.isArray(saleItems) || saleItems.length === 0) {
     throw new ValidationError('Store ID and items are required');
   }
 
-  if (!paymentMethod) {
-    throw new ValidationError('Payment method is required');
-  }
+  // Calculate total amount if not provided
+  let calculatedTotal = 0;
+  const processedItems = [];
 
-  // Validate items structure
-  for (const item of items) {
+  // Validate items structure and calculate total
+  for (const item of saleItems) {
     if (!item.productId || !item.quantity || item.quantity <= 0) {
       throw new ValidationError('Each item must have a valid productId and positive quantity');
     }
+
+    // Handle both price formats (item.price vs item.unitPrice)
+    const unitPrice = item.unitPrice || item.price;
+    if (!unitPrice || unitPrice <= 0) {
+      throw new ValidationError('Each item must have a valid price');
+    }
+
+    calculatedTotal += unitPrice * item.quantity;
+    processedItems.push({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: unitPrice
+    });
   }
+
+  const finalTotal = totalAmount || calculatedTotal;
 
   logger.info('Creating new sale', {
     storeId,
     customerId,
-    itemCount: items.length,
-    totalAmount,
+    itemCount: processedItems.length,
+    totalAmount: finalTotal,
     userId: req.user?.id
   });
 
@@ -63,27 +81,30 @@ export const createSale = asyncHandler(async (req, res) => {
   recordOperation('sales_create', 'start');
 
   try {
+    // Extract token for service-to-service communication
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+    
     const sale = await SalesService.createSale({
       storeId,
-      customerId,
-      items,
-      paymentMethod,
-      totalAmount,
-      discounts,
-      userId: req.user.id
-    });
+      customerId: customerId || req.user.id, // Use authenticated user ID if customerId not provided
+      items: processedItems,
+      totalAmount: finalTotal,
+      discounts
+    }, { ...req.user, token });
 
     recordOperation('sales_create', 'success');
 
     logger.info('Sale created successfully', {
       saleId: sale.id,
       storeId,
-      totalAmount: sale.totalAmount
+      totalAmount: sale.total // Use correct field name
     });
 
     res.status(201).json({
       success: true,
       data: sale,
+      sale: sale, // Include sale object for frontend compatibility
       message: 'Sale created successfully'
     });
   } catch (error) {

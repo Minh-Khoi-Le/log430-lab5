@@ -41,10 +41,10 @@ export const API_ENDPOINTS = {
   
   // Stock Service endpoints
   STOCK: {
-    BASE: "/stock",
-    BY_PRODUCT: (productId) => `/stock/product/${productId}`,
-    BY_STORE: (storeId) => `/stock/store/${storeId}`,
-    UPDATE: "/stock/update"
+    BASE: "/api/stock",
+    BY_PRODUCT: (productId) => `/api/stock/product/${productId}`,
+    BY_STORE: (storeId) => `/api/stock/store/${storeId}`,
+    UPDATE: "/api/stock/update"
   },
   
   // Sales Service endpoints
@@ -52,7 +52,8 @@ export const API_ENDPOINTS = {
     BASE: "/sales",
     BY_ID: (id) => `/sales/${id}`,
     BY_USER: (userId) => `/sales/user/${userId}`,
-    CREATE: "/sales"
+    CREATE: "/sales",
+    BY_CUSTOMER: (customerId) => `/sales/customer/${customerId}`
   },
   
   // Refund Service endpoints

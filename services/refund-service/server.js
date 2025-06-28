@@ -143,7 +143,10 @@ async function initializeApp() {
     /**
      * API Routes
      * Mount refund-specific routes under /api/v1/refunds
+     * Also support direct /refunds for Kong gateway routing
      */
+    app.use('/refunds', refundRoutes);
+    app.use('/api/refunds', refundRoutes);
     app.use('/api/v1/refunds', refundRoutes);
 
     /**

@@ -6,7 +6,7 @@
  * 
  */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useUser } from "../context/UserContext";
 import { authenticatedFetch, API_ENDPOINTS } from "../api";
 import {
@@ -150,34 +150,35 @@ const History = () => {
   };
 
   // Fetch purchase and refund history
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     if (!user?.id) return;
     
     setLoading(true);
     setError("");
     
     try {
-      // Fetch purchase history
+      // Fetch purchase history using the customer endpoint
       const purchasesData = await authenticatedFetch(
-        `${API_ENDPOINTS.SALES.BASE}/history`, 
-        user.token, 
-        {
-          method: "POST",
-          body: JSON.stringify({ userId: user.id })
-        }
+        API_ENDPOINTS.SALES.BY_CUSTOMER(user.id),
+        user.token
       );
       setPurchases(Array.isArray(purchasesData) ? purchasesData : []);
       
-      // Fetch refund history
-      const refundsData = await authenticatedFetch(
-        `${API_ENDPOINTS.REFUNDS.BASE}/history`, 
-        user.token, 
-        {
-          method: "POST",
-          body: JSON.stringify({ userId: user.id })
-        }
-      );
-      setRefunds(Array.isArray(refundsData) ? refundsData : []);
+      // Fetch refund history - use generic endpoint and filter client-side for now
+      try {
+        const refundsData = await authenticatedFetch(
+          API_ENDPOINTS.REFUNDS.BASE, 
+          user.token
+        );
+        // Filter refunds for this user (assuming refunds have a userId or customer field)
+        const userRefunds = Array.isArray(refundsData) ? 
+          refundsData.filter(refund => refund.userId === user.id || refund.customerId === user.id) : 
+          [];
+        setRefunds(userRefunds);
+      } catch (refundErr) {
+        console.warn("Could not fetch refunds:", refundErr);
+        setRefunds([]); // Set empty array if refunds fail to load
+      }
       
     } catch (err) {
       console.error("Error fetching history:", err);
@@ -185,12 +186,12 @@ const History = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   // Fetch history on mount and when user changes
   useEffect(() => {
     fetchHistory();
-  }, [user]);
+  }, [user, fetchHistory]);
 
   return (
     <Box sx={{ py: 4, bgcolor: "#f6f6f6", minHeight: "calc(100vh - 60px)" }}>
@@ -561,4 +562,4 @@ const History = () => {
   );
 };
 
-export default History; 
+export default History;

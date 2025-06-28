@@ -64,7 +64,10 @@ async function initializeApp() {
     /**
      * API Routes
      * Mount cart-specific routes under /api/v1/cart
+     * Also support direct /cart for Kong gateway routing
      */
+    app.use('/cart', cartRoutes);
+    app.use('/api/cart', cartRoutes);
     app.use('/api/v1/cart', cartRoutes);
 
     /**

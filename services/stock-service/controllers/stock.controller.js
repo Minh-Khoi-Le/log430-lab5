@@ -146,8 +146,7 @@ export const getByStore = asyncHandler(async (req, res) => {
  * Updates stock quantity for a specific product in a store
  */
 export const updateStock = asyncHandler(async (req, res) => {
-  const { storeId, productId } = req.params;
-  const { quantity, operation, reason, notes } = req.body;
+  const { storeId, productId, quantity, operation, reason, notes } = req.body;
 
   // Input validation and conversion
   const storeIdInt = parseInt(storeId);
@@ -180,15 +179,30 @@ export const updateStock = asyncHandler(async (req, res) => {
   recordOperation('stock_update', 'start');
 
   try {
+    // Map operation to the type expected by the service
+    let type, serviceQuantity;
+    if (operation === 'set') {
+      type = 'set';
+      serviceQuantity = parseInt(quantity);
+    } else if (operation === 'add') {
+      type = 'adjustment';
+      serviceQuantity = parseInt(quantity);
+    } else if (operation === 'subtract') {
+      type = 'adjustment';
+      serviceQuantity = -parseInt(quantity); // Negative for subtraction
+    }
+
     const updateData = {
-      quantity: parseInt(quantity),
-      operation,
+      productId: productIdInt,
+      storeId: storeIdInt,
+      quantity: serviceQuantity,
+      type,
       reason,
       notes,
       userId: req.user?.id
     };
 
-    const stockUpdate = await StockService.updateStock(storeIdInt, productIdInt, updateData, req.user);
+    const stockUpdate = await StockService.updateStock(updateData);
 
     recordOperation('stock_update', 'success');
 

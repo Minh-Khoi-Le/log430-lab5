@@ -28,17 +28,17 @@ docker network prune -f > nul 2>&1
 echo Starting services...
 docker-compose up --build -d
 echo Waiting for services to initialize...
-timeout /t 15 /nobreak >nul
+timeout /t 5 /nobreak >nul
 
 echo.
 echo Step 2: Setting up database and seeding data...
 echo Waiting for database to be ready...
-timeout /t 15 /nobreak >nul
+timeout /t 5 /nobreak >nul
 
 echo Running database migrations...
 docker-compose up -d db-migrate
 echo Waiting for migration to complete...
-timeout /t 10 /nobreak >nul
+timeout /t 5 /nobreak >nul
 docker-compose logs db-migrate
 if errorlevel 1 (
     echo WARNING: Database migration had issues, continuing...
@@ -47,7 +47,7 @@ if errorlevel 1 (
 echo Seeding database with mock data...
 docker-compose --profile seed up --build -d db-seed
 echo Waiting for seeding to complete...
-timeout /t 15 /nobreak >nul
+timeout /t 5 /nobreak >nul
 docker-compose logs db-seed
 if errorlevel 1 (
     echo WARNING: Database seeding failed

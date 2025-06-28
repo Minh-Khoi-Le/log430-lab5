@@ -44,7 +44,6 @@
 
 import { 
   getDatabaseClient, 
-  executeTransaction,
   logger,
   BaseError,
   redisClient
@@ -292,7 +291,8 @@ class StockService {
     const { productId, storeId, quantity, type, reason, userId } = updateData;
     
     try {
-      return await executeTransaction(async (tx) => {
+      const prisma = getPrisma();
+      return await prisma.$transaction(async (tx) => {
         // Get current stock
         let stock = await tx.stock.findFirst({
           where: { productId, storeId },
@@ -321,8 +321,7 @@ class StockService {
           stock = await tx.stock.update({
             where: { id: stock.id },
             data: { 
-              quantity: newQuantity,
-              updatedAt: new Date()
+              quantity: newQuantity
             },
             include: {
               product: { select: { id: true, name: true } },
@@ -451,7 +450,8 @@ class StockService {
     const { productId, fromStoreId, toStoreId, quantity, reason, userId } = transferData;
     
     try {
-      return await executeTransaction(async (tx) => {
+      const prisma = getPrisma();
+      return await prisma.$transaction(async (tx) => {
         // Get source stock
         const fromStock = await tx.stock.findFirst({
           where: { productId, storeId: fromStoreId }

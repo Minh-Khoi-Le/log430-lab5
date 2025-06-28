@@ -28,6 +28,7 @@
 
 import express from 'express';
 import dotenv from 'dotenv';
+import cors from 'cors';
 
 // Import shared components
 import {
@@ -66,6 +67,7 @@ async function initializeApp() {
     logger.info('Initializing Sales Service...');
 
     // Apply shared middleware
+    app.use(cors());
     app.use(httpMetricsMiddleware);
     app.use(express.json({ limit: '10mb' }));
     app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -85,7 +87,10 @@ async function initializeApp() {
     /**
      * API Routes
      * All sales-related endpoints are prefixed with /api
+     * Also support direct /sales for Kong gateway routing
      */
+    app.use('/sales', salesRoutes);
+    app.use('/api/sales', salesRoutes);
     app.use('/api/v1/sales', salesRoutes);
 
     /**

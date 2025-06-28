@@ -21,6 +21,7 @@ import {
   logger,
   BaseError
 } from '../../shared/index.js';
+import { getRedisClient } from '../../shared/utils/redis.js';
 import axios from 'axios';
 
 // Get shared database client
@@ -57,7 +58,7 @@ class SalesService {
       logger.info('Creating new sale transaction', {
         storeId: saleData.storeId,
         itemCount: saleData.items?.length,
-        totalAmount: saleData.totalAmount,
+        subtotalAmount: saleData.totalAmount, // This is subtotal from frontend
         userId: userInfo.id
       });
 
@@ -77,45 +78,36 @@ class SalesService {
         const newSale = await tx.sale.create({
           data: {
             storeId: saleData.storeId,
-            customerId: saleData.customerId || null,
-            employeeId: userInfo.id,
-            totalAmount: saleData.totalAmount,
-            taxAmount: saleData.taxAmount || 0,
-            discountAmount: saleData.discountAmount || 0,
-            paymentMethod: saleData.paymentMethod,
-            status: 'COMPLETED',
-            saleDate: new Date(),
-            notes: saleData.notes || null,
-            metadata: {
-              createdBy: userInfo.id,
-              channel: 'POS',
-              version: '1.0'
-            }
+            userId: saleData.customerId || userInfo.id,
+            total: calculatedTotals.total, // Use calculated total with tax
+            status: 'active'
+          },
+          include: {
+            store: true,
+            user: true
           }
         });
 
-        // Create sale items
-        const saleItems = await Promise.all(
+        // Create sale items (lines)
+        const saleLines = await Promise.all(
           saleData.items.map(item => 
-            tx.saleItem.create({
+            tx.saleLine.create({
               data: {
                 saleId: newSale.id,
                 productId: item.productId,
                 quantity: item.quantity,
-                unitPrice: item.unitPrice,
-                totalPrice: item.quantity * item.unitPrice,
-                discount: item.discount || 0
+                unitPrice: item.unitPrice
               }
             })
           )
         );
 
         // Update stock levels
-        await this.updateStockLevels(saleData.items, saleData.storeId);
+        await this.updateStockLevels(saleData.items, saleData.storeId, userInfo.token);
 
         return {
           ...newSale,
-          items: saleItems
+          lines: saleLines
         };
       }, 'sales-service');
 
@@ -126,7 +118,9 @@ class SalesService {
       logger.info('Sale transaction created successfully', {
         saleId: sale.id,
         storeId: saleData.storeId,
-        totalAmount: saleData.totalAmount,
+        subtotal: calculatedTotals.subtotal,
+        tax: calculatedTotals.tax,
+        totalAmount: calculatedTotals.total,
         duration: timer.getDuration()
       });
 
@@ -389,12 +383,12 @@ class SalesService {
       const [totalSales, salesCount, avgSaleAmount] = await Promise.all([
         getPrisma().sale.aggregate({
           where: whereClause,
-          _sum: { totalAmount: true }
+          _sum: { total: true }
         }),
         getPrisma().sale.count({ where: whereClause }),
         getPrisma().sale.aggregate({
           where: whereClause,
-          _avg: { totalAmount: true }
+          _avg: { total: true }
         })
       ]);
 
@@ -419,30 +413,17 @@ class SalesService {
         take: 10
       });
 
-      // Get sales by payment method
-      const salesByPaymentMethod = await getPrisma().sale.groupBy({
-        by: ['paymentMethod'],
-        where: whereClause,
-        _sum: {
-          totalAmount: true
-        },
-        _count: {
-          id: true
-        }
-      });
-
       // Get time-based analytics
       const timeBasedSales = await this.getTimeBasedSales(whereClause, groupBy);
 
       const analytics = {
         summary: {
-          totalRevenue: totalSales._sum.totalAmount || 0,
+          totalRevenue: totalSales._sum.total || 0,
           totalSales: salesCount,
-          averageSaleAmount: avgSaleAmount._avg.totalAmount || 0,
+          averageSaleAmount: avgSaleAmount._avg.total || 0,
           currency: 'CAD'
         },
         topProducts,
-        paymentMethods: salesByPaymentMethod,
         timeSeries: timeBasedSales,
         generatedAt: new Date().toISOString()
       };
@@ -538,13 +519,74 @@ class SalesService {
     }
   }
 
+  /**
+   * Get all sales for a specific customer, with product and store details.
+   * @param {string} customerId - The ID of the customer.
+   * @returns {Promise<Array>} - A promise that resolves to a list of sales.
+   */
+  async getSalesByCustomer(customerId) {
+    const timer = logger.startTimer();
+    
+    try {
+      const cacheKey = `sales:customer:${customerId}`;
+      
+      // Try to get from cache first
+      const cachedResult = await this.getCachedResult(cacheKey);
+      if (cachedResult) {
+        logger.info('Sales data retrieved from cache', { customerId, cacheKey });
+        return cachedResult;
+      }
+
+      const sales = await getPrisma().sale.findMany({
+        where: { userId: parseInt(customerId) },
+        include: {
+          lines: {
+            include: {
+              product: {
+                select: {
+                  id: true,
+                  name: true,
+                  price: true
+                }
+              }
+            }
+          },
+          store: true
+        },
+        orderBy: {
+          date: 'desc'
+        }
+      });
+
+      // Cache the result for 5 minutes
+      await this.setCachedResult(cacheKey, sales, 300);
+
+      logger.info('Sales data retrieved successfully', {
+        customerId,
+        count: sales.length,
+        duration: timer.getDuration()
+      });
+
+      return sales;
+
+    } catch (error) {
+      logger.error('Error retrieving sales data by customer', {
+        error: error.message,
+        customerId,
+        duration: timer.getDuration()
+      });
+      
+      throw new BaseError('Failed to retrieve sales data by customer', 500);
+    }
+  }
+
   // === PRIVATE HELPER METHODS ===
 
   /**
    * Validate sale data
    */
   validateSaleData(saleData) {
-    const required = ['storeId', 'items', 'totalAmount', 'paymentMethod'];
+    const required = ['storeId', 'items', 'totalAmount'];
     const missing = required.filter(field => !saleData[field]);
     
     if (missing.length > 0) {
@@ -577,18 +619,32 @@ class SalesService {
   async validateSaleItems(items, storeId) {
     try {
       // Call stock service to validate availability
-      const stockServiceUrl = process.env.STOCK_SERVICE_URL || 'http://localhost:3003';
+      const stockServiceUrl = process.env.STOCK_SERVICE_URL || 'http://stock-service:3004';
       
       for (const item of items) {
         const response = await axios.get(
-          `${stockServiceUrl}/api/stock/product/${item.productId}/store/${storeId}`
+          `${stockServiceUrl}/api/stock/availability`,
+          {
+            params: {
+              productId: item.productId,
+              storeId: storeId,
+              quantity: item.quantity
+            }
+          }
         );
         
-        const stockData = response.data.data;
+        const availability = response.data.data;
         
-        if (stockData.quantity < item.quantity) {
+        logger.debug('Stock availability check result', {
+          productId: item.productId,
+          storeId,
+          requestedQuantity: item.quantity,
+          availability
+        });
+        
+        if (!availability.isAvailable) {
           throw new BaseError(
-            `Insufficient stock for product ${item.productId}. Available: ${stockData.quantity}, Required: ${item.quantity}`, 
+            `Insufficient stock for product ${item.productId}. Available: ${availability.availableQuantity}, Required: ${item.quantity}`, 
             400
           );
         }
@@ -629,35 +685,64 @@ class SalesService {
   validateSaleAmounts(saleData, calculated) {
     const tolerance = 0.01; // 1 cent tolerance for rounding
     
-    if (Math.abs(saleData.totalAmount - calculated.total) > tolerance) {
-      throw new BaseError('Sale amount does not match calculated total', 400);
+    // Compare against subtotal since frontend sends pre-tax amount
+    // The service will add tax automatically
+    if (Math.abs(saleData.totalAmount - calculated.subtotal) > tolerance) {
+      throw new BaseError('Sale amount does not match calculated subtotal', 400);
     }
   }
 
   /**
    * Update stock levels
    */
-  async updateStockLevels(items, storeId) {
+  async updateStockLevels(items, storeId, authToken = null) {
     try {
-      const stockServiceUrl = process.env.STOCK_SERVICE_URL || 'http://localhost:3003';
+      const stockServiceUrl = process.env.STOCK_SERVICE_URL || 'http://stock-service:3004';
       
-      // Prepare stock updates
-      const stockUpdates = items.map(item => ({
-        productId: item.productId,
-        storeId: storeId,
-        quantityChange: -item.quantity, // Negative for sale
-        reason: 'SALE',
-        reference: 'sale-transaction'
-      }));
+      // Prepare headers with authentication if available
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
+      // Update stock levels for each item individually
+      for (const item of items) {
+        const updatePayload = {
+          productId: item.productId,
+          storeId: storeId,
+          quantity: item.quantity,
+          operation: 'subtract', // Subtract the sold quantity
+          reason: 'Sale transaction'
+        };
 
-      // Call stock service to update inventory
-      await axios.post(`${stockServiceUrl}/api/stock/bulk-update`, {
-        updates: stockUpdates
+        logger.debug('Calling stock service for individual update', {
+          url: `${stockServiceUrl}/api/stock`,
+          payload: updatePayload,
+          hasAuthToken: !!authToken
+        });
+
+        await axios.put(`${stockServiceUrl}/api/stock`, updatePayload, { headers });
+      }
+
+      logger.info('Stock levels updated successfully', {
+        storeId,
+        itemCount: items.length,
+        updateMethod: 'individual'
       });
 
     } catch (error) {
       logger.error('Failed to update stock levels', {
         error: error.message,
+        errorName: error.name,
+        responseData: error.response?.data,
+        responseStatus: error.response?.status,
+        responseHeaders: error.response?.headers,
+        requestUrl: error.config?.url,
+        requestMethod: error.config?.method,
+        requestData: error.config?.data,
         storeId,
         items
       });
@@ -690,11 +775,7 @@ class SalesService {
     }
     
     if (filters.customerId) {
-      where.customerId = filters.customerId;
-    }
-    
-    if (filters.employeeId) {
-      where.employeeId = filters.employeeId;
+      where.userId = filters.customerId;
     }
     
     return where;
@@ -708,8 +789,8 @@ class SalesService {
     const sales = await getPrisma().sale.findMany({
       where: whereClause,
       select: {
-        saleDate: true,
-        totalAmount: true
+        date: true,
+        total: true
       },
       orderBy: {
         saleDate: 'asc'
@@ -747,7 +828,7 @@ class SalesService {
         grouped[key] = { revenue: 0, count: 0 };
       }
       
-      grouped[key].revenue += sale.totalAmount;
+      grouped[key].revenue += sale.total;
       grouped[key].count += 1;
     });
 
