@@ -422,3 +422,51 @@ export const getStockSummary = asyncHandler(async (req, res) => {
     throw error;
   }
 });
+
+/**
+ * Verify Stock Level Controller
+ * 
+ * Verifies the current stock level for a specific product in a specific store.
+ * Useful for debugging and verifying stock levels after sales.
+ */
+export const verifyStockLevel = asyncHandler(async (req, res) => {
+  const { productId, storeId } = req.params;
+
+  // Input validation
+  if (!productId || isNaN(productId)) {
+    throw new ValidationError('Valid product ID is required');
+  }
+
+  if (!storeId || isNaN(storeId)) {
+    throw new ValidationError('Valid store ID is required');
+  }
+
+  logger.info('Verifying stock level', {
+    productId: parseInt(productId),
+    storeId: parseInt(storeId)
+  });
+
+  try {
+    const stockInfo = await StockService.verifyStockLevel(
+      parseInt(productId),
+      parseInt(storeId)
+    );
+
+    recordOperation('verify_stock_level', 'success');
+
+    logger.info('Stock level verified successfully', {
+      productId: parseInt(productId),
+      storeId: parseInt(storeId),
+      currentStock: stockInfo.currentStock,
+      exists: stockInfo.exists
+    });
+
+    res.json({
+      success: true,
+      data: stockInfo
+    });
+  } catch (error) {
+    recordOperation('verify_stock_level', 'error');
+    throw error;
+  }
+});

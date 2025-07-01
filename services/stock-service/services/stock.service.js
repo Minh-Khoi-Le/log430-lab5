@@ -121,7 +121,7 @@ class StockService {
       const cachedData = await getCachedStockData('product', productId);
       
       if (cachedData) {
-        logger.logCacheOperation('hit', cacheKey);
+        logger.debug('Cache hit', { cacheKey });
         return cachedData;
       }
       
@@ -147,7 +147,6 @@ class StockService {
             select: {
               id: true,
               name: true,
-              city: true,
               address: true
             }
           }
@@ -164,9 +163,7 @@ class StockService {
         productId: stock.productId,
         storeId: stock.storeId,
         quantity: stock.quantity,
-        reservedQuantity: stock.reservedQuantity || 0,
-        availableQuantity: stock.quantity - (stock.reservedQuantity || 0),
-        lastUpdated: stock.updatedAt,
+        availableQuantity: stock.quantity, 
         product: stock.product,
         store: stock.store
       }));
@@ -255,10 +252,8 @@ class StockService {
         productId: stock.productId,
         storeId: stock.storeId,
         quantity: stock.quantity,
-        reservedQuantity: stock.reservedQuantity || 0,
-        availableQuantity: stock.quantity - (stock.reservedQuantity || 0),
+        availableQuantity: stock.quantity, 
         isLowStock: stock.quantity > 0 && stock.quantity < threshold,
-        lastUpdated: stock.updatedAt,
         product: stock.product
       }));
       
@@ -342,7 +337,7 @@ class StockService {
             }
           });
         }
-        // Determine movement type
+        // Determine movement type (for logging purposes)
         let movementType;
         if (type === 'adjustment') {
           movementType = quantity > 0 ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT';
@@ -350,27 +345,31 @@ class StockService {
           movementType = 'MANUAL_SET';
         }
         
-        // Create stock movement record for audit trail
-        await tx.stockMovement.create({
-          data: {
-            productId,
-            storeId,
-            movementType,
-            quantity: type === 'adjustment' ? Math.abs(quantity) : newQuantity,
-            previousQuantity,
-            newQuantity,
-            reason: reason || 'Manual stock update',
-            userId,
-            createdAt: new Date()
-          }
+        // Log the stock movement for audit purposes
+        logger.info('Stock movement recorded', {
+          productId,
+          storeId,
+          movementType,
+          quantity: type === 'adjustment' ? Math.abs(quantity) : newQuantity,
+          previousQuantity,
+          newQuantity,
+          reason: reason || 'Manual stock update',
+          userId
         });
         
-        // Invalidate related caches
-        await Promise.all([
-          invalidateStockCache('product', productId),
-          invalidateStockCache('store', storeId),
-          deleteCachePattern(`stock:summary:*`)
-        ]);
+        // Log detailed stock update information for debugging
+        logger.info('Stock update completed successfully', {
+          productId,
+          storeId,
+          operation: type,
+          changeAmount: newQuantity - previousQuantity,
+          beforeUpdate: previousQuantity,
+          afterUpdate: newQuantity,
+          timestamp: new Date().toISOString()
+        });
+        
+        // Invalidate product cache since stock data affects product listings
+        await this.invalidateProductCache(productId);
         
         return {
           ...stock,
@@ -507,64 +506,50 @@ class StockService {
           });
         }
         
-        // Create transfer record
-        const transfer = await tx.stockTransfer.create({
-          data: {
+        // Log transfer for audit purposes
+        const transferId = `${Date.now()}-${productId}-${fromStoreId}-${toStoreId}`;
+        logger.info('Stock transfer recorded', {
+          transferId,
+          productId,
+          fromStoreId,
+          toStoreId,
+          quantity,
+          reason: reason || 'Stock transfer',
+          userId,
+          status: 'COMPLETED'
+        });
+        
+        // Log movement records for audit trail
+        logger.info('Stock transfer movements', {
+          outbound: {
             productId,
-            fromStoreId,
-            toStoreId,
+            storeId: fromStoreId,
+            movementType: 'TRANSFER_OUT',
             quantity,
-            reason: reason || 'Stock transfer',
-            userId,
-            status: 'COMPLETED',
-            createdAt: new Date()
+            previousQuantity: fromStock.quantity,
+            newQuantity: fromStock.quantity - quantity,
+            reason: `Transfer to store ${toStoreId}: ${reason || 'Stock transfer'}`,
+            transferId,
+            userId
+          },
+          inbound: {
+            productId,
+            storeId: toStoreId,
+            movementType: 'TRANSFER_IN',
+            quantity,
+            previousQuantity: toStock?.quantity || 0,
+            newQuantity: (toStock?.quantity || 0) + quantity,
+            reason: `Transfer from store ${fromStoreId}: ${reason || 'Stock transfer'}`,
+            transferId,
+            userId
           }
         });
         
-        // Create movement records for audit trail
-        await Promise.all([
-          // Outbound movement from source store
-          tx.stockMovement.create({
-            data: {
-              productId,
-              storeId: fromStoreId,
-              movementType: 'TRANSFER_OUT',
-              quantity,
-              previousQuantity: fromStock.quantity,
-              newQuantity: fromStock.quantity - quantity,
-              reason: `Transfer to store ${toStoreId}: ${reason || 'Stock transfer'}`,
-              referenceId: transfer.id,
-              userId,
-              createdAt: new Date()
-            }
-          }),
-          // Inbound movement to destination store
-          tx.stockMovement.create({
-            data: {
-              productId,
-              storeId: toStoreId,
-              movementType: 'TRANSFER_IN',
-              quantity,
-              previousQuantity: toStock?.quantity || 0,
-              newQuantity: (toStock?.quantity || 0) + quantity,
-              reason: `Transfer from store ${fromStoreId}: ${reason || 'Stock transfer'}`,
-              referenceId: transfer.id,
-              userId,
-              createdAt: new Date()
-            }
-          })
-        ]);
-        
-        // Invalidate caches
-        await Promise.all([
-          invalidateStockCache('product', productId),
-          invalidateStockCache('store', fromStoreId),
-          invalidateStockCache('store', toStoreId),
-          deleteCachePattern(`stock:summary:*`)
-        ]);
+        // Invalidate product cache since stock data affects product listings
+        await this.invalidateProductCache(productId);
         
         return {
-          transferId: transfer.id,
+          transferId,
           productId,
           fromStock: updatedFromStock,
           toStock: updatedToStock,
@@ -616,8 +601,7 @@ class StockService {
         outOfStockItems,
         lowStockItems,
         totalValue,
-        topProducts,
-        recentMovements
+        topProducts
       ] = await Promise.all([
         // Total stock items
         getPrisma().stock.count({ where }),
@@ -662,20 +646,6 @@ class StockService {
           },
           orderBy: { quantity: 'desc' },
           take: 10
-        }),
-        
-        // Recent stock movements
-        getPrisma().stockMovement.findMany({
-          where: {
-            ...(storeId && { storeId }),
-            ...(productId && { productId })
-          },
-          include: {
-            product: { select: { id: true, name: true } },
-            store: { select: { id: true, name: true } }
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 10
         })
       ]);
       
@@ -719,17 +689,7 @@ class StockService {
           product: item.product,
           estimatedValue: item.quantity * (item.product.price || 0)
         })),
-        recentMovements: recentMovements.map(movement => ({
-          id: movement.id,
-          productId: movement.productId,
-          storeId: movement.storeId,
-          movementType: movement.movementType,
-          quantity: movement.quantity,
-          reason: movement.reason,
-          createdAt: movement.createdAt,
-          product: movement.product,
-          store: movement.store
-        })),
+        recentMovements: [], // No movement tracking table in current schema
         generatedAt: new Date().toISOString()
       };
       
@@ -761,7 +721,8 @@ class StockService {
         }
       });
       
-      const availableQuantity = stock ? stock.quantity - (stock.reservedQuantity || 0) : 0;
+      
+      const availableQuantity = stock ? stock.quantity : 0;
       const isAvailable = availableQuantity >= requestedQuantity;
       
       return {
@@ -769,7 +730,6 @@ class StockService {
         storeId,
         requestedQuantity,
         availableQuantity,
-        reservedQuantity: stock?.reservedQuantity || 0,
         totalQuantity: stock?.quantity || 0,
         isAvailable,
         shortage: isAvailable ? 0 : requestedQuantity - availableQuantity,
@@ -779,6 +739,42 @@ class StockService {
     } catch (error) {
       logger.error('Error checking stock availability:', { productId, storeId, requestedQuantity, error: error.message });
       throw new BaseError('Failed to check stock availability', 500);
+    }
+  }
+
+  /**
+   * Invalidate product cache after stock update
+   * 
+   * This method tries to invalidate the product service cache to ensure
+   * that product listings reflect updated stock information immediately.
+   * 
+   * @param {number} productId - Product ID whose cache should be invalidated
+   */
+  static async invalidateProductCache(productId) {
+    try {
+      // Try to call product service cache invalidation endpoint
+      const productServiceUrl = process.env.PRODUCT_SERVICE_URL || 'http://product-service:3001';
+      
+      // Make a request to invalidate cache for this specific product
+      const axios = await import('axios');
+      await axios.default.post(`${productServiceUrl}/products/internal/cache/invalidate`, {
+        keys: [`products`, `product-${productId}`, `product-catalog`],
+        reason: 'Stock update'
+      }, {
+        timeout: 2000, // 2 second timeout
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Service': 'stock-service'
+        }
+      });
+      
+      logger.debug('Product cache invalidated successfully', { productId });
+    } catch (error) {
+      // Don't fail the stock update if cache invalidation fails
+      logger.warn('Failed to invalidate product cache', { 
+        productId, 
+        error: error.message 
+      });
     }
   }
 
@@ -817,6 +813,42 @@ class StockService {
       }
     } catch (error) {
       logger.warn('Cache storage failed', { key, error: error.message });
+    }
+  }
+
+  /**
+   * Verify current stock levels for debugging purposes
+   * 
+   * @param {number} productId - Product ID to check
+   * @param {number} storeId - Store ID to check
+   * @returns {Promise<Object>} Current stock information
+   */
+  static async verifyStockLevel(productId, storeId) {
+    try {
+      const stock = await getPrisma().stock.findFirst({
+        where: { productId, storeId },
+        include: {
+          product: { select: { id: true, name: true } },
+          store: { select: { id: true, name: true } }
+        }
+      });
+      
+      const result = {
+        productId,
+        storeId,
+        currentQuantity: stock?.quantity || 0,
+        stockExists: !!stock,
+        product: stock?.product,
+        store: stock?.store,
+        timestamp: new Date().toISOString()
+      };
+      
+      logger.info('Stock verification completed', result);
+      
+      return result;
+    } catch (error) {
+      logger.error('Error verifying stock level:', { productId, storeId, error: error.message });
+      throw new BaseError('Failed to verify stock level', 500);
     }
   }
 }

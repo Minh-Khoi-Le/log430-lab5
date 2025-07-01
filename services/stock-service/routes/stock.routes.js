@@ -12,6 +12,7 @@
  * - POST /api/stock/transfer - Transfer stock between stores
  * - GET /api/stock/summary - Get stock summary and analytics
  * - GET /api/stock/availability - Check stock availability
+ * - GET /api/stock/verify/:productId/:storeId - Verify current stock level
  * 
  * All routes include:
  * - Request validation middleware
@@ -203,6 +204,25 @@ router.post('/transfer',
   authenticate,
   // Transfer validation would be handled by controller
   StockController.transferStock
+);
+
+/**
+ * Verify Stock Level Route
+ * GET /api/stock/verify/:productId/:storeId
+ * 
+ * Verifies the current stock level for a specific product in a specific store.
+ * Useful for debugging and verifying stock levels after sales.
+ * 
+ * Parameters:
+ * - productId: Product ID (integer)
+ * - storeId: Store ID (integer)
+ * 
+ * Response: 200 OK with current stock level and verification details
+ */
+router.get('/verify/:productId/:storeId',
+  validateId('productId'),
+  validateId('storeId'),
+  StockController.verifyStockLevel
 );
 
 export default router;

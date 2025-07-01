@@ -61,12 +61,48 @@ const CartPage = () => {
         setShowReceipt(true);
         clearCart();
         setErrorMsg("");
-      } else if (data.error) {
-        setErrorMsg(data.error);
+        
+        // Trigger a page refresh to update product stock information
+        // This ensures that the Products page will show updated stock levels
+        setTimeout(() => {
+          console.log('Dispatching stockUpdated event...');
+          const productIds = cart.map(item => item.product.id);
+          console.log('Products affected by sale:', productIds);
+          
+          // Dispatch a custom event that the Products page can listen to
+          window.dispatchEvent(new CustomEvent('stockUpdated', { 
+            detail: { productIds }
+          }));
+          
+          console.log('stockUpdated event dispatched successfully');
+        }, 1000); // Small delay to ensure the sale is processed
+      } else if (data.error || data.message) {
+        // Handle structured error responses
+        setErrorMsg(data.message || data.error);
       }
     } catch (err) {
       console.error("Error confirming purchase:", err);
-      setErrorMsg(err.message || "Network or server error.");
+      
+      // Extract error message from API error response
+      let errorMessage = "Network or server error.";
+      if (err.message) {
+        // Check if the error message contains "API Error" format
+        const apiErrorMatch = err.message.match(/API Error \d+: (.+)/);
+        if (apiErrorMatch) {
+          try {
+            // Try to parse the error as JSON to get the message
+            const errorData = JSON.parse(apiErrorMatch[1]);
+            errorMessage = errorData.message || errorData.error || apiErrorMatch[1];
+          } catch {
+            // If parsing fails, use the raw error message
+            errorMessage = apiErrorMatch[1];
+          }
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      
+      setErrorMsg(errorMessage);
       setLoading(false);
     }
   };

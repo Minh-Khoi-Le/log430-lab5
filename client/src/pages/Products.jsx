@@ -50,13 +50,18 @@ const Products = () => {
 
     try {
       setLoading(true);
+      
+      // Add timestamp to ensure fresh data (bypass any caching)
+      const timestamp = Date.now();
+      const url = `${API_ENDPOINTS.PRODUCTS.BASE}?t=${timestamp}`;
+      
       // For authenticated users, use authenticatedFetch with token
       // For guests, use regular apiFetch
       let response;
       if (user?.token) {
-        response = await authenticatedFetch(API_ENDPOINTS.PRODUCTS.BASE, user.token);
+        response = await authenticatedFetch(url, user.token);
       } else {
-        response = await apiFetch(API_ENDPOINTS.PRODUCTS.BASE);
+        response = await apiFetch(url);
       }
       
       // Handle structured API response
@@ -66,6 +71,13 @@ const Products = () => {
       if (!Array.isArray(data)) {
         throw new Error('Invalid API response: expected an array of products');
       }
+      
+      console.log('Fetched products data:', data.length, 'products');
+      console.log('Sample product with stock:', data[0] ? {
+        id: data[0].id,
+        name: data[0].name,
+        stocks: data[0].stocks
+      } : 'No products found');
       
       // Products already include stock information, no need for separate API calls
       setProducts(data);
@@ -99,9 +111,28 @@ const Products = () => {
     }
   }, [user?.token]);
 
-  // Load products when component mounts
+  // Load products when component mounts and listen for stock updates
   useEffect(() => {
+    console.log('Products page mounted, fetching initial product data...');
     fetchProducts();
+    
+    // Listen for stock update events from successful purchases
+    const handleStockUpdate = (event) => {
+      console.log('Stock updated event received!', event.detail);
+      console.log('Stock updated for products:', event.detail?.productIds);
+      console.log('Refreshing product data to reflect updated stock levels...');
+      // Refresh products to show updated stock levels
+      fetchProducts();
+    };
+    
+    console.log('Adding stock update event listener...');
+    window.addEventListener('stockUpdated', handleStockUpdate);
+    
+    // Cleanup event listener on component unmount
+    return () => {
+      console.log('Removing stock update event listener...');
+      window.removeEventListener('stockUpdated', handleStockUpdate);
+    };
   }, [fetchProducts]);
 
   /**
@@ -266,28 +297,41 @@ const Products = () => {
           <Typography variant="h6">
             Product Catalog
           </Typography>
-          {user?.role === "client" ? (
-            <FormControlLabel
-              control={
-                <Switch 
-                  checked={hideUnavailable}
-                  onChange={handleFilterChange}
-                  color="primary"
-                />
-              }
-              label="Show only available products"
-              labelPlacement="start"
-            />
-          ) : (
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            {/* Refresh button */}
             <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={handleOpenAddModal}
+              variant="outlined"
+              onClick={() => fetchProducts()}
+              disabled={loading}
+              sx={{ minWidth: 'auto', px: 2 }}
             >
-              Add Product
+              {loading ? "Refreshing..." : "Refresh"}
             </Button>
-          )}
+            
+            {user?.role === "client" ? (
+              <FormControlLabel
+                control={
+                  <Switch 
+                    checked={hideUnavailable}
+                    onChange={handleFilterChange}
+                    color="primary"
+                  />
+                }
+                label="Show only available products"
+                labelPlacement="start"
+              />
+            ) : (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={handleOpenAddModal}
+              >
+                Add Product
+              </Button>
+            )}
+          </Box>
         </Box>
       </Paper>
 

@@ -20,7 +20,7 @@
  */
 
 import * as service from '../services/product.service.js';
-import { recordError, deleteMultipleFromCache } from '../../shared/index.js';
+import { recordError, deleteMultipleFromCache, logger } from '../../shared/index.js';
 
 /**
  * List Products Controller
@@ -348,6 +348,54 @@ export async function search(req, res, next) {
 
   } catch (error) {
     recordError('search_products', req.path);
+    next(error);
+  }
+}
+
+/**
+ * Cache Invalidation Controller
+ * 
+ * Handles POST /internal/cache/invalidate requests from other services
+ * to invalidate product cache when underlying data changes.
+ * 
+ * @param {Request} req - Express request object with keys to invalidate
+ * @param {Response} res - Express response object
+ * @param {Function} next - Express next middleware function
+ */
+export async function invalidateCache(req, res, next) {
+  try {
+    const { keys, reason = 'Cache invalidation requested' } = req.body;
+
+    logger.info('Cache invalidation requested', {
+      keys,
+      reason,
+      requestedBy: req.headers['x-internal-service'] || 'unknown'
+    });
+
+    // Delete the specified cache keys
+    const deletedCount = await deleteMultipleFromCache(keys);
+
+    logger.info('Cache invalidation completed', {
+      keys,
+      deletedCount,
+      reason
+    });
+
+    res.json({
+      success: true,
+      message: 'Cache invalidated successfully',
+      deletedKeys: deletedCount,
+      keys,
+      reason,
+      service: 'product-service'
+    });
+
+  } catch (error) {
+    logger.error('Cache invalidation failed', {
+      error: error.message,
+      keys: req.body?.keys
+    });
+    recordError('invalidate_cache', req.path);
     next(error);
   }
 }

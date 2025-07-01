@@ -304,4 +304,29 @@ router.get('/search',
   })
 );
 
+// Internal routes for service-to-service communication
+const internalRouter = express.Router();
+
+/**
+ * POST /internal/cache/invalidate
+ * 
+ * Internal endpoint for cache invalidation by other services
+ * Used by stock-service and other services to invalidate product cache
+ * when underlying data changes
+ */
+internalRouter.post('/cache/invalidate',
+  validate([
+    body('keys').isArray().withMessage('Keys must be an array'),
+    body('keys.*').isString().withMessage('Each key must be a string'),
+    body('reason').optional().isString().withMessage('Reason must be a string')
+  ]),
+  asyncHandler(async (req, res, next) => {
+    recordOperation('cache_invalidate', 'success');
+    await controller.invalidateCache(req, res, next);
+  })
+);
+
+// Mount internal routes under /internal
+router.use('/internal', internalRouter);
+
 export default router;
