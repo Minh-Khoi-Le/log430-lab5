@@ -77,18 +77,25 @@ class RefundService {
       // Create the refund request
       const refund = await executeTransaction(async (tx) => {
         // Create the main refund record
+        logger.info('Creating refund with user IDs', {
+          requestingUserId: userInfo.id,
+          saleUserId: sale.userId,
+          saleId: refundData.saleId
+        });
+        
         const newRefund = await tx.refund.create({
           data: {
             saleId: refundData.saleId,
             total: refundData.amount,
             reason: refundData.reason,
             storeId: sale.storeId,
-            userId: sale.userId
+            userId: sale.userId  // Keep the original sale's user (customer)
           }
         });
 
-        // Create refund lines if there are items
-        if (refundData.items) {
+        // Create refund lines
+        if (refundData.items && refundData.items.length > 0) {
+          // Create lines for specific items provided
           await Promise.all(
             refundData.items.map(item => 
               tx.refundLine.create({
@@ -97,6 +104,21 @@ class RefundService {
                   productId: item.productId,
                   quantity: item.quantity,
                   unitPrice: item.unitPrice
+                }
+              })
+            )
+          );
+        } else {
+          // If no specific items provided, create refund lines for all sale items
+          // This represents a full refund of the entire sale
+          await Promise.all(
+            sale.lines.map(saleLine => 
+              tx.refundLine.create({
+                data: {
+                  refundId: newRefund.id,
+                  productId: saleLine.productId,
+                  quantity: saleLine.quantity,
+                  unitPrice: saleLine.unitPrice
                 }
               })
             )
@@ -116,7 +138,7 @@ class RefundService {
       await this.invalidateRelevantCaches(sale.storeId, refundData.saleId);
 
       // Get full refund details for response
-      const fullRefund = await this.getRefundById(refund.id);
+      const fullRefund = await this.getRefundById(refund.id, null); // Internal call, no access control needed
 
       logger.info('Refund request created successfully', {
         refundId: refund.id,
@@ -147,7 +169,7 @@ class RefundService {
   /**
    * Get refunds by store with filtering and pagination
    * 
-   * @param {number} storeId - Store ID
+   * @param {number} storeId - Store ID (null for all stores)
    * @param {Object} filters - Filter options
    * @param {Object} pagination - Pagination options
    * @returns {Promise<Object>} Refunds data with pagination info
@@ -190,37 +212,37 @@ class RefundService {
             select: {
               id: true,
               storeId: true,
-              total: true, // Fixed: was totalAmount
-              date: true,  // Fixed: was saleDate
+              total: true,
+              date: true,
               status: true,
-              user: {      // Fixed: was customer
+              user: {
                 select: {
                   id: true,
-                  name: true,  // Fixed: was firstName, lastName, email
+                  name: true,
                   role: true
                 }
               }
             }
           },
-          lines: {       // Fixed: was items
+          lines: {
             include: {
               product: {
                 select: {
                   id: true,
                   name: true,
-                  price: true  // Fixed: removed sku (doesn't exist)
+                  price: true
                 }
               }
             }
           },
-          user: {        // Fixed: was requestedByUser
+          user: {
             select: {
               id: true,
-              name: true,  // Fixed: was firstName, lastName, email
+              name: true,
               role: true
             }
           },
-          store: {       // Add store information
+          store: {
             select: {
               id: true,
               name: true
@@ -228,10 +250,17 @@ class RefundService {
           }
         },
         orderBy: {
-          date: 'desc'  // Order by refund date
+          date: 'desc'
         },
         skip: offset,
         take: limit
+      });
+
+      logger.info('Refunds retrieved from database', {
+        storeId,
+        filters,
+        refundCount: refunds.length,
+        refundUserIds: refunds.map(r => ({ id: r.id, userId: r.userId }))
       });
 
       const result = {
@@ -274,9 +303,10 @@ class RefundService {
    * Get refund by ID with full details
    * 
    * @param {number} refundId - Refund ID
+   * @param {Object} userInfo - User information for access control
    * @returns {Promise<Object>} Refund details
    */
-  async getRefundById(refundId) {
+  async getRefundById(refundId, userInfo = null) {
     const timer = logger.startTimer();
     
     try {
@@ -344,6 +374,11 @@ class RefundService {
         throw new BaseError('Refund not found', 404, 'REFUND_NOT_FOUND');
       }
 
+      // Role-based access control
+      if (userInfo && userInfo.role === 'client' && refund.userId !== userInfo.id) {
+        throw new BaseError('Access denied: You can only view your own refunds', 403, 'ACCESS_DENIED');
+      }
+
       // Cache for 10 minutes
       await this.setCachedResult(cacheKey, refund, 600);
 
@@ -385,7 +420,7 @@ class RefundService {
     
     try {
       // Get current refund
-      const currentRefund = await this.getRefundById(refundId);
+      const currentRefund = await this.getRefundById(refundId, null); // Internal call, no access control needed
 
       // Since status field doesn't exist, just return the refund as-is
       // In a real implementation, you'd either:
@@ -429,7 +464,7 @@ class RefundService {
     const timer = logger.startTimer();
     
     try {
-      const refund = await this.getRefundById(refundId);
+      const refund = await this.getRefundById(refundId, null); // Internal call, no access control needed
 
       // Since status field doesn't exist, we can't check approval status
       // In a real implementation, you'd either:
@@ -469,7 +504,7 @@ class RefundService {
         duration: timer.getDuration()
       });
 
-      return await this.getRefundById(refundId);
+      return await this.getRefundById(refundId, null); // Internal call, no access control needed
 
     } catch (error) {
       logger.error('Error processing refund', {
@@ -813,15 +848,55 @@ class RefundService {
 
       if (newSaleStatus !== sale.status) {
         // Call sales service to update status
-        const salesServiceUrl = process.env.SALES_SERVICE_URL || 'http://localhost:3004';
+        const salesServiceUrl = process.env.SALES_SERVICE_URL || 'http://sales-service:3005';
+        
+        logger.info('Updating sale status', {
+          saleId,
+          currentStatus: sale.status,
+          newStatus: newSaleStatus,
+          totalRefunded,
+          saleTotal: sale.total,
+          url: `${salesServiceUrl}/api/sales/${saleId}/status`
+        });
+        
         await axios.patch(`${salesServiceUrl}/api/sales/${saleId}/status`, {
           status: newSaleStatus
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': process.env.API_KEY || 'internal-service-key',
+            'Authorization': `Bearer ${process.env.INTERNAL_TOKEN || 'internal-service-token'}`
+          },
+          timeout: 5000
         });
+        
+        logger.info('Sale status updated successfully', {
+          saleId,
+          newStatus: newSaleStatus
+        });
+
+        // Invalidate cache for this customer's sales data
+        try {
+          const cacheKey = `sales:customer:${sale.customerId}`;
+          await redisClient.del(cacheKey);
+          logger.info('Sales cache invalidated for customer', {
+            customerId: sale.customerId,
+            cacheKey
+          });
+        } catch (cacheError) {
+          logger.warn('Failed to invalidate sales cache', {
+            error: cacheError.message,
+            customerId: sale.customerId
+          });
+        }
       }
 
     } catch (error) {
       logger.error('Failed to update sale refund status', {
         error: error.message,
+        stack: error.stack,
+        responseData: error.response?.data,
+        responseStatus: error.response?.status,
         saleId,
         refundId: refund.id
       });
@@ -965,23 +1040,51 @@ class RefundService {
     try {
       const patterns = [
         `refunds:store:${storeId}:*`,
+        `refunds:store:null:*`, // Also invalidate global refunds cache
         `analytics:refunds:${storeId}:*`
       ];
       
       if (saleId) {
         patterns.push(`sale:${saleId}:*`);
+        
+        // Also get the sale to find the customer and invalidate their sales cache
+        try {
+          const sale = await RefundService.getPrisma().sale.findUnique({
+            where: { id: saleId }
+          });
+          if (sale && sale.userId) { // Fixed: use userId instead of customerId
+            patterns.push(`sales:customer:${sale.userId}:*`);
+            patterns.push(`sales:customer:${sale.userId}`);
+          }
+        } catch (error) {
+          logger.warn('Failed to get sale for cache invalidation', { saleId, error: error.message });
+        }
       }
       
       if (refundId) {
         patterns.push(`refund:${refundId}`);
       }
       
+      // Add patterns to clear all user-specific refund caches
+      patterns.push(`refunds:store:*`);
+      
       for (const pattern of patterns) {
-        const keys = await redisClient.keys(pattern);
-        if (keys.length > 0) {
-          await redisClient.del(...keys);
+        if (pattern.includes('*')) {
+          const keys = await redisClient.keys(pattern);
+          if (keys.length > 0) {
+            await redisClient.del(...keys);
+          }
+        } else {
+          await redisClient.del(pattern);
         }
       }
+      
+      logger.info('Cache invalidated successfully', {
+        storeId,
+        saleId,
+        refundId,
+        patterns
+      });
     } catch (error) {
       logger.warn('Cache invalidation failed', { storeId, saleId, refundId, error: error.message });
     }
@@ -1009,7 +1112,7 @@ class RefundService {
 
     for (const refundId of refundIds) {
       try {
-        const refund = await this.getRefundById(refundId);
+        const refund = await this.getRefundById(refundId, null); // Internal call, no access control needed
         results.successful.push({ refundId, refund });
         
         logger.info('Bulk approve requested (status field not implemented)', {
@@ -1028,7 +1131,7 @@ class RefundService {
     // NOTE: Status field doesn't exist in current schema
     // This method is kept for API compatibility but doesn't actually update status
     
-    const refund = await this.getRefundById(refundId);
+    const refund = await this.getRefundById(refundId, null); // Internal call, no access control needed
     
     logger.info('Cancel refund requested (status field not implemented)', {
       refundId,

@@ -464,7 +464,6 @@ start-loadbalanced.bat
 | --------------- | --------- | ---------- | ------------------------ |
 | Product Service | 2         | 3001, 3011 | product-service-upstream |
 | Stock Service   | 2         | 3004, 3014 | stock-service-upstream   |
-| Cart Service    | 2         | 3007, 3017 | cart-service-upstream    |
 
 ### Testing Features
 

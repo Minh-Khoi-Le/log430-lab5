@@ -139,11 +139,12 @@ export const getAllSales = asyncHandler(async (req, res) => {
     throw new ValidationError('Invalid pagination parameters');
   }
 
-  logger.info('Fetching sales list', {
+  logger.info('Fetching sales list with role-based access', {
     page: pageNum,
     limit: limitNum,
     filters: { storeId, customerId, status, startDate, endDate },
-    userId: req.user?.id
+    userId: req.user?.id,
+    userRole: req.user?.role
   });
 
   const filters = {
@@ -153,6 +154,11 @@ export const getAllSales = asyncHandler(async (req, res) => {
     startDate,
     endDate
   };
+
+  // Role-based filtering: clients can only see their own sales
+  if (req.user?.role === 'client') {
+    filters.customerId = req.user.id;
+  }
 
   const result = await SalesService.getAllSales({
     page: pageNum,
@@ -187,12 +193,17 @@ export const getSaleById = asyncHandler(async (req, res) => {
     throw new ValidationError('Invalid sale ID');
   }
 
-  logger.info('Fetching sale by ID', { saleId: saleIdNum, userId: req.user?.id });
+  logger.info('Fetching sale by ID', { saleId: saleIdNum, userId: req.user?.id, userRole: req.user?.role });
 
   const sale = await SalesService.getSaleById(saleIdNum);
 
   if (!sale) {
     throw new NotFoundError(`Sale with ID ${saleIdNum} not found`);
+  }
+
+  // Role-based access control: clients can only view their own sales
+  if (req.user?.role === 'client' && sale.userId !== req.user.id) {
+    throw new ValidationError('Access denied: You can only view your own sales');
   }
 
   res.json({
@@ -215,7 +226,7 @@ export const updateSaleStatus = asyncHandler(async (req, res) => {
     throw new ValidationError('Invalid sale ID');
   }
 
-  const validStatuses = ['pending', 'completed', 'cancelled', 'refunded'];
+  const validStatuses = ['COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED'];
   if (!status || !validStatuses.includes(status)) {
     throw new ValidationError('Invalid status. Must be one of: ' + validStatuses.join(', '));
   }
@@ -227,7 +238,7 @@ export const updateSaleStatus = asyncHandler(async (req, res) => {
     userId: req.user?.id
   });
 
-  const updatedSale = await SalesService.updateSaleStatus(saleIdNum, status, reason, req.user.id);
+  const updatedSale = await SalesService.updateSaleStatus(saleIdNum, status, req.user || { id: 'system' });
 
   if (!updatedSale) {
     throw new NotFoundError(`Sale with ID ${saleIdNum} not found`);
@@ -346,6 +357,11 @@ export const getSalesByCustomer = asyncHandler(async (req, res) => {
     throw new ValidationError('Invalid customer ID');
   }
 
+  // Role-based access control
+  if (req.user?.role === 'client' && req.user.id !== customerIdNum) {
+    throw new ValidationError('Access denied: You can only view your own sales');
+  }
+
   const pageNum = parseInt(page);
   const limitNum = parseInt(limit);
 
@@ -353,11 +369,12 @@ export const getSalesByCustomer = asyncHandler(async (req, res) => {
     throw new ValidationError('Invalid pagination parameters');
   }
 
-  logger.info('Fetching sales by customer', {
+  logger.info('Fetching sales by customer with role-based access', {
     customerId: customerIdNum,
+    requestingUserId: req.user?.id,
+    userRole: req.user?.role,
     page: pageNum,
-    limit: limitNum,
-    userId: req.user?.id
+    limit: limitNum
   });
 
   const result = await SalesService.getSalesByCustomer(customerIdNum, {

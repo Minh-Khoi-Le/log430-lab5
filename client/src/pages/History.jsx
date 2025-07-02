@@ -86,7 +86,7 @@ const History = () => {
 
   // Sort items by date
   const sortedPurchases = [...purchases]
-    .filter(p => p.status === 'active') // Show only active sales in purchases tab
+    // Show all sales - refunded sales will have disabled refund buttons
     .sort((a, b) => {
       const dateA = new Date(a.date);
       const dateB = new Date(b.date);
@@ -116,6 +116,10 @@ const History = () => {
   const handleConfirmRefund = async () => {
     if (!refundingSale) return;
     
+    console.log('=== REFUND CREATION DEBUG ===');
+    console.log('User:', { id: user.id, role: user.role, name: user.name });
+    console.log('Sale to refund:', { id: refundingSale.id, userId: refundingSale.userId, total: refundingSale.total });
+    
     setRefundLoading(true);
     
     try {
@@ -123,13 +127,26 @@ const History = () => {
         method: "POST",
         body: JSON.stringify({
           saleId: refundingSale.id,
-          userId: user.id,
+          amount: refundingSale.total,
           reason: refundReason || "Client requested refund"
         })
       });
       
+      // Clear cache by adding timestamp to force fresh data
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait for backend processing
+      
+      // Force clear any cached data
+      if ('caches' in window) {
+        try {
+          const cacheNames = await caches.keys();
+          await Promise.all(cacheNames.map(name => caches.delete(name)));
+        } catch (e) {
+          console.warn('Could not clear browser cache:', e);
+        }
+      }
+      
       // Refresh both purchase and refund data
-      fetchHistory();
+      await fetchHistory();
       
       setSnackbarMessage("Refund processed successfully");
       handleCloseRefundDialog();
@@ -138,7 +155,15 @@ const History = () => {
       setCurrentTab(1);
     } catch (err) {
       console.error("Refund error:", err);
-      setSnackbarMessage(`Erreur: ${err.message}`);
+      
+      // Handle specific error cases
+      if (err.message.includes("already been fully refunded") || err.message.includes("ALREADY_REFUNDED")) {
+        setSnackbarMessage("This order has already been refunded. Refreshing data...");
+        // Force refresh to get updated status
+        await fetchHistory();
+      } else {
+        setSnackbarMessage(`Error: ${err.message}`);
+      }
     } finally {
       setRefundLoading(false);
     }
@@ -153,13 +178,19 @@ const History = () => {
   const fetchHistory = useCallback(async () => {
     if (!user?.id) return;
     
+    console.log('=== FETCH HISTORY DEBUG ===');
+    console.log('User:', { id: user.id, role: user.role, name: user.name });
+    
     setLoading(true);
     setError("");
     
     try {
+      // Add cache busting parameter to ensure fresh data
+      const cacheBuster = `?_t=${Date.now()}`;
+      
       // Fetch purchase history using the customer endpoint
       const purchasesResponse = await authenticatedFetch(
-        API_ENDPOINTS.SALES.BY_CUSTOMER(user.id),
+        API_ENDPOINTS.SALES.BY_CUSTOMER(user.id) + cacheBuster,
         user.token
       );
       
@@ -173,14 +204,18 @@ const History = () => {
         purchasesArray = purchasesResponse;
       }
       
+      console.log('Purchases fetched:', purchasesArray.length, 'for user:', user.id);
       setPurchases(purchasesArray);
       
       // Fetch refund history - use generic endpoint and filter client-side for now
       try {
         const response = await authenticatedFetch(
-          API_ENDPOINTS.REFUNDS.BASE, 
+          API_ENDPOINTS.REFUNDS.BASE + cacheBuster, 
           user.token
         );
+        
+        console.log('Refunds response:', response);
+        console.log('Response data structure:', JSON.stringify(response, null, 2));
         
         // Handle the API response structure: { success: true, data: { refunds: [...], pagination: {...} } }
         let refundsArray = [];
@@ -194,8 +229,23 @@ const History = () => {
           refundsArray = response;
         }
         
-        // Filter refunds for this user (assuming refunds have a userId field)
-        const userRefunds = refundsArray.filter(refund => refund.userId === user.id);
+        console.log('All refunds:', refundsArray.length);
+        console.log('User role:', user.role, 'User ID:', user.id);
+        
+        // Filter refunds based on user role
+        let userRefunds = refundsArray;
+        if (user.role === 'client') {
+          // For clients, filter to show only their refunds
+          userRefunds = refundsArray.filter(refund => {
+            console.log('Refund:', refund.id, 'userId:', refund.userId, 'matches:', refund.userId === user.id);
+            return refund.userId === user.id;
+          });
+        } else {
+          // For admins, show all refunds
+          console.log('Admin user - showing all refunds');
+        }
+        
+        console.log('Filtered refunds:', userRefunds.length);
         setRefunds(userRefunds);
       } catch (refundErr) {
         console.warn("Could not fetch refunds:", refundErr);
@@ -265,7 +315,7 @@ const History = () => {
               <Tab 
                 icon={<SellIcon />} 
                 iconPosition="start" 
-                label={`Purchases (${purchases.filter(p => p.status === 'active').length})`} 
+                label={`Purchases (${purchases.length})`} 
               />
               <Tab 
                 icon={<UndoIcon />} 
@@ -372,13 +422,13 @@ const History = () => {
                                   {line.product.name}
                                 </Typography>
                                 <Typography variant="body2" color="text.secondary">
-                                  {(line.quantity * line.unitPrice).toFixed(2)} €
+                                  ${(line.quantity * line.unitPrice).toFixed(2)}
                                 </Typography>
                               </Box>
                             }
                             secondary={
                               <Typography variant="caption" color="text.secondary">
-                                {line.quantity} x {line.unitPrice.toFixed(2)} €
+                                {line.quantity} x ${line.unitPrice.toFixed(2)}
                               </Typography>
                             }
                           />
@@ -388,15 +438,45 @@ const History = () => {
                     
                     {/* Refund Button */}
                     <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-                      <Button
-                        variant="outlined"
-                        color="error"
-                        startIcon={<RefundIcon />}
-                        onClick={() => handleRefundRequest(purchase)}
-                        size="small"
-                      >
-                        Request refund
-                      </Button>
+                      {(() => {
+                        if (purchase.status === 'REFUNDED') {
+                          return (
+                            <Button
+                              variant="outlined"
+                              color="success"
+                              startIcon={<RefundIcon />}
+                              disabled
+                              size="small"
+                            >
+                              Already Refunded
+                            </Button>
+                          );
+                        } else if (purchase.status === 'PARTIALLY_REFUNDED') {
+                          return (
+                            <Button
+                              variant="outlined"
+                              color="warning"
+                              startIcon={<RefundIcon />}
+                              disabled
+                              size="small"
+                            >
+                              Partially Refunded
+                            </Button>
+                          );
+                        } else {
+                          return (
+                            <Button
+                              variant="outlined"
+                              color="error"
+                              startIcon={<RefundIcon />}
+                              onClick={() => handleRefundRequest(purchase)}
+                              size="small"
+                            >
+                              Request refund
+                            </Button>
+                          );
+                        }
+                      })()}
                     </Box>
                   </Box>
                 </Paper>
@@ -484,35 +564,53 @@ const History = () => {
                       Refunded items:
                     </Typography>
                     <List disablePadding>
-                      {(refund.lines || []).map((line) => (
-                        <ListItem 
-                          key={line.id} 
-                          disablePadding 
-                          sx={{ 
-                            py: 1,
-                            borderBottom: '1px solid rgba(0,0,0,0.06)',
-                            '&:last-child': { borderBottom: 'none' }
-                          }}
-                        >
+                      {(refund.lines && refund.lines.length > 0) ? (
+                        refund.lines.map((line) => (
+                          <ListItem 
+                            key={line.id} 
+                            disablePadding 
+                            sx={{ 
+                              py: 1,
+                              borderBottom: '1px solid rgba(0,0,0,0.06)',
+                              '&:last-child': { borderBottom: 'none' }
+                            }}
+                          >
+                            <ListItemText
+                              primary={
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                  <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                    {line.product.name}
+                                  </Typography>
+                                  <Typography variant="body2" color="text.secondary">
+                                    ${(line.quantity * line.unitPrice).toFixed(2)}
+                                  </Typography>
+                                </Box>
+                              }
+                              secondary={
+                                <Typography variant="caption" color="text.secondary">
+                                  {line.quantity} x ${line.unitPrice.toFixed(2)}
+                                </Typography>
+                              }
+                            />
+                          </ListItem>
+                        ))
+                      ) : (
+                        // Fallback: Show message for full refund when no specific lines are available
+                        <ListItem disablePadding sx={{ py: 1 }}>
                           <ListItemText
                             primary={
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                  {line.product.name}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                  {(line.quantity * line.unitPrice).toFixed(2)} €
-                                </Typography>
-                              </Box>
+                              <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                Full refund of order #{refund.sale?.id || refund.saleId}
+                              </Typography>
                             }
                             secondary={
                               <Typography variant="caption" color="text.secondary">
-                                {line.quantity} x {line.unitPrice.toFixed(2)} €
+                                All items from the original purchase
                               </Typography>
                             }
                           />
                         </ListItem>
-                      ))}
+                      )}
                     </List>
                   </Box>
                 </Paper>

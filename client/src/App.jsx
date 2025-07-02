@@ -8,7 +8,6 @@ import History from "./pages/History";
 import StoreDetail from "./pages/StoreDetail";
 import Navbar from "./components/Navbar";
 import { UserProvider, useUser } from "./context/UserContext";
-import { CartProvider } from "./context/CartContext";
 
 /**
  * MainApp Component
@@ -62,9 +61,7 @@ function MainApp() {
 export default function App() {
   return (
     <UserProvider>
-      <CartProvider>
-        <MainApp />
-      </CartProvider>
+      <MainApp />
     </UserProvider>
   );
 }

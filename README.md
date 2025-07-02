@@ -620,7 +620,6 @@ log430-lab5/
 │   ├── stock-service/         # Inventory service
 │   ├── sales-service/         # Transaction service
 │   ├── refund-service/        # Return processing service
-│   ├── cart-service/          # Shopping cart service
 │   ├── shared/                # Shared utilities and middleware
 │   ├── monitoring/            # Prometheus and Grafana config
 │   └── docker-compose.microservices.yml

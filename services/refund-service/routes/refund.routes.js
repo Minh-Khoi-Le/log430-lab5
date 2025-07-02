@@ -41,6 +41,12 @@ router.post('/',
 // Get all refunds with pagination and filtering
 router.get('/',
   authenticate,
+  refundController.getRefundsByStore
+);
+
+// Get pending refund approvals
+router.get('/pending',
+  authenticate,
   refundController.getPendingApprovals
 );
 

@@ -79,8 +79,7 @@ export const createRefund = asyncHandler(async (req, res) => {
       reason: reason.trim(),
       items,
       customerEmail,
-      notes: notes?.trim(),
-      requestedBy: req.user?.id
+      notes: notes?.trim()
     };
 
     const refund = await RefundService.createRefund(refundData, req.user);
@@ -90,8 +89,7 @@ export const createRefund = asyncHandler(async (req, res) => {
     logger.info('Refund request created successfully', {
       refundId: refund.id,
       saleId,
-      amount: refund.amount,
-      status: refund.status
+      amount: refund.total
     });
 
     res.status(201).json({
@@ -109,18 +107,22 @@ export const createRefund = asyncHandler(async (req, res) => {
  * Get Refunds by Store Controller
  * 
  * Retrieves refunds for a specific store with filtering and pagination
+ * If no storeId is provided, gets all refunds for the user
  */
 export const getRefundsByStore = asyncHandler(async (req, res) => {
   const { storeId } = req.params;
   const { page = 1, limit = 20, status, startDate, endDate, minAmount, maxAmount } = req.query;
 
-  // Input validation
-  if (!storeId || isNaN(storeId)) {
+  // For base route without storeId parameter, get all refunds for the user
+  const targetStoreId = storeId ? parseInt(storeId) : null;
+
+  // Input validation for storeId if provided
+  if (storeId && isNaN(storeId)) {
     throw new ValidationError('Valid store ID is required');
   }
 
   logger.info('Retrieving refunds by store', {
-    storeId,
+    storeId: targetStoreId,
     page,
     limit,
     status,
@@ -137,7 +139,9 @@ export const getRefundsByStore = asyncHandler(async (req, res) => {
       startDate,
       endDate,
       minAmount: minAmount ? parseFloat(minAmount) : undefined,
-      maxAmount: maxAmount ? parseFloat(maxAmount) : undefined
+      maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
+      // Role-based filtering: clients see only their refunds, admins see all
+      ...(req.user?.role === 'client' && { userId: req.user.id })
     };
 
     const pagination = {
@@ -145,14 +149,20 @@ export const getRefundsByStore = asyncHandler(async (req, res) => {
       limit: parseInt(limit)
     };
 
-    const result = await RefundService.getRefundsByStore(parseInt(storeId), filters, pagination);
+    logger.info('Fetching refunds with role-based access', {
+      userRole: req.user?.role,
+      userId: req.user?.id,
+      isFiltered: req.user?.role === 'client'
+    });
+
+    const result = await RefundService.getRefundsByStore(targetStoreId, filters, pagination);
 
     recordOperation('refund_get_by_store', 'success');
 
     logger.info('Store refunds retrieved successfully', {
-      storeId,
+      storeId: targetStoreId,
       refundCount: result.refunds?.length || 0,
-      totalRefunds: result.total
+      totalRefunds: result.pagination?.totalCount || 0
     });
 
     res.json({
@@ -196,8 +206,8 @@ export const getRefundById = asyncHandler(async (req, res) => {
 
     logger.info('Refund retrieved successfully', {
       refundId: refund.id,
-      status: refund.status,
-      amount: refund.amount
+      saleId: refund.saleId,
+      amount: refund.total
     });
 
     res.json({
@@ -256,8 +266,7 @@ export const updateRefundStatus = asyncHandler(async (req, res) => {
 
     logger.info('Refund status updated successfully', {
       refundId: refund.id,
-      oldStatus: refund.previousStatus,
-      newStatus: refund.status
+      newStatus: status
     });
 
     res.json({
@@ -308,8 +317,7 @@ export const processRefund = asyncHandler(async (req, res) => {
 
     logger.info('Refund processed successfully', {
       refundId: refund.id,
-      amount: refund.amount,
-      transactionReference: refund.transactionReference
+      amount: refund.total
     });
 
     res.json({
@@ -517,8 +525,7 @@ export const cancelRefund = asyncHandler(async (req, res) => {
 
     logger.info('Refund cancelled successfully', {
       refundId: refund.id,
-      reason,
-      previousStatus: refund.previousStatus
+      reason
     });
 
     res.json({

@@ -90,19 +90,6 @@ services:
       - microservice
       - refund
 
-  # Cart Service
-  - name: cart-service
-    url: http://cart-service:3007
-    routes:
-      - name: cart-routes
-        paths:
-          - /cart
-          - /api/cart
-        strip_path: false
-    tags:
-      - microservice
-      - cart
-
 # Load Balancer Upstreams
 upstreams:
   # Product Service Load Balancing
@@ -128,23 +115,6 @@ upstreams:
       - target: stock-service:3004
         weight: 100
       - target: host.docker.internal:3004
-        weight: 100
-    healthchecks:
-      active:
-        http_path: /health
-        healthy:
-          interval: 5
-          successes: 1
-        unhealthy:
-          interval: 5
-          http_failures: 2
-
-  # Cart Service Load Balancing
-  - name: cart-upstream
-    targets:
-      - target: cart-service:3007
-        weight: 100
-      - target: host.docker.internal:3007
         weight: 100
     healthchecks:
       active:

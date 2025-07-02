@@ -14,13 +14,9 @@ Migrate existing multi-store system from monolithic to microservices architectur
 - **User Service**: User authentication and profiles
 - **Refund Service**: Return processing
 
-**New E-commerce Service:**
-- **Shopping Cart Service**: Cart operations for e-commerce (add/remove items, persistence, session management)
-
 ### 1.2 Service Dependencies
 - Stock Service: Shared between physical store and e-commerce
-- Cart Service: Depends on Product Service and Stock Service
-- Sales Service: May interact with Cart Service for checkout completion
+- Sales Service: Handles checkout operations
 
 ## Phase 2: Microservices Implementation
 
@@ -32,8 +28,7 @@ services/
 ├── sales-service/
 ├── stock-service/
 ├── user-service/
-├── refund-service/
-└── cart-service/              # New e-commerce service
+└── refund-service/
 ```
 
 ### 2.2 Service Extraction Tasks
@@ -45,13 +40,12 @@ For each service:
 - Implement health check endpoints
 - Define service-specific API contracts
 
-### 2.3 Shopping Cart Service Implementation
+### 2.3 Frontend Cart Implementation
 **Features:**
-- Add/remove items from cart
-- Cart persistence (Redis-based for session management)
-- Cart validation against stock levels
-- Cart expiration policies
-- Integration with Product and Stock services
+- Local storage-based cart persistence
+- React state management for cart operations
+- Client-side cart validation against stock levels
+- Integration with Product and Stock services for data
 
 ## Phase 3: API Gateway Implementation
 
@@ -75,7 +69,6 @@ api-gateway/
 
 ### 3.3 Load Balancing Configuration
 Set up load balancing for:
-- **Cart Service**: 2+ instances for high availability
 - **Stock Service**: 2+ instances (shared critical service)
 - **Product Service**: 2+ instances for catalog queries
 
@@ -99,7 +92,7 @@ Extend existing Prometheus/Grafana setup with:
 **New Metrics:**
 - Gateway request latency and throughput
 - Service-to-service communication metrics
-- Cart operations performance
+- Frontend cart performance (local storage operations)
 - Individual service availability
 - Load balancing distribution metrics
 
@@ -150,7 +143,7 @@ Extend existing Prometheus/Grafana setup with:
 
 ## Implementation Timeline
 
-**Week 1:** Phase 1-2 (Service extraction and cart service development)
+**Week 1:** Phase 1-2 (Service extraction and frontend cart implementation)
 **Week 2:** Phase 3 (API Gateway setup and routing configuration)  
 **Week 3:** Phase 4-5 (Security, monitoring, and observability)
 **Week 4:** Phase 6-7 (Load testing, comparison analysis, documentation)
@@ -160,7 +153,7 @@ Extend existing Prometheus/Grafana setup with:
 ### Database Strategy
 - **Shared Database Approach**: Keep existing database, partition by service domain
 - **Service-Specific Schemas**: Each service owns its data tables
-- **Cart Service**: Use Redis for session-based cart storage
+- **Frontend Cart**: Use local storage for cart persistence
 
 ### Communication Patterns
 - **Synchronous**: REST APIs for direct service calls
@@ -170,7 +163,7 @@ Extend existing Prometheus/Grafana setup with:
 ### Deployment Strategy
 - **Containerized Services**: Each service in its own Docker container
 - **Gateway as Entry Point**: Single point of entry for all external requests
-- **Load Balanced Critical Services**: Multiple instances for cart, stock, and product services
+- **Load Balanced Critical Services**: Multiple instances for stock and product services
 
 ## Success Criteria
 

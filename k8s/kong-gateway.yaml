@@ -110,13 +110,6 @@ data:
         paths:
         - /api/stock
     
-    - name: cart-service
-      url: http://cart-service:3007
-      routes:
-      - name: cart-route
-        paths:
-        - /api/cart
-    
     - name: user-service
       url: http://user-service:3002
       routes:
@@ -160,14 +153,6 @@ data:
       - target: stock-service-1:3004
         weight: 100
       - target: stock-service-2:3004
-        weight: 100
-    
-    - name: cart-service-upstream
-      algorithm: round-robin
-      targets:
-      - target: cart-service-1:3007
-        weight: 100
-      - target: cart-service-2:3007
         weight: 100
     
     plugins:

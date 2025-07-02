@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useCart } from "../context/CartContext";
+import { useLocalCart } from "../hooks/useLocalCart";
 import { useUser } from "../context/UserContext";
 import { apiFetch, API_ENDPOINTS } from "../api";
 import {
@@ -32,7 +32,7 @@ import StoreIcon from "@mui/icons-material/Store";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 
 function Navbar() {
-  const { cart } = useCart();
+  const { cart } = useLocalCart();
   const { user, setUser } = useUser();
   const [stores, setStores] = useState([]);
   // Calculate total items in cart for badge display

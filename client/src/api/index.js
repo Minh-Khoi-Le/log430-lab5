@@ -61,15 +61,6 @@ export const API_ENDPOINTS = {
     BASE: "/refunds",
     BY_ID: (id) => `/refunds/${id}`,
     CREATE: "/refunds"
-  },
-  
-  // Cart Service endpoints
-  CART: {
-    BASE: "/cart",
-    BY_USER: (userId) => `/cart/user/${userId}`,
-    ADD: "/cart/add",
-    REMOVE: "/cart/remove",
-    CLEAR: "/cart/clear"
   }
 };
 

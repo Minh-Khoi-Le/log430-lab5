@@ -7,13 +7,13 @@
  */
 
 import React, { useState } from "react";
-import { useCart } from "../context/CartContext";
+import { useLocalCart } from "../hooks/useLocalCart";
 import { useUser } from "../context/UserContext";
 import { authenticatedFetch, API_ENDPOINTS } from "../api";
 import Modal from "../components/Modal";
 
 const CartPage = () => {
-  const { cart, removeFromCart, clearCart } = useCart();
+  const { cart, removeFromCart, clearCart } = useLocalCart();
   const { user } = useUser();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");

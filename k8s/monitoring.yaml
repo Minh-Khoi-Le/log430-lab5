@@ -90,8 +90,6 @@ data:
               - 'product-service-2:3001'
               - 'stock-service-1:3004'
               - 'stock-service-2:3004'
-              - 'cart-service-1:3007'
-              - 'cart-service-2:3007'
               - 'user-service:3002'
               - 'store-service:3003'
               - 'sales-service:3005'

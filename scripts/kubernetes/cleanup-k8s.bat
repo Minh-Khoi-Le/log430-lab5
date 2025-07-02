@@ -5,10 +5,10 @@ echo   Removing all microservices resources
 echo ========================================
 
 echo [1/8] Removing application deployments...
-kubectl delete deployment kong-gateway product-service-1 product-service-2 stock-service-1 stock-service-2 cart-service-1 cart-service-2 user-service store-service sales-service refund-service client 2>NUL
+kubectl delete deployment kong-gateway product-service-1 product-service-2 stock-service-1 stock-service-2 user-service store-service sales-service refund-service client 2>NUL
 
 echo [2/8] Removing application services...
-kubectl delete service kong-gateway-service product-service-1 product-service-2 product-service stock-service-1 stock-service-2 stock-service cart-service-1 cart-service-2 cart-service user-service store-service sales-service refund-service client-service 2>NUL
+kubectl delete service kong-gateway-service product-service-1 product-service-2 product-service stock-service-1 stock-service-2 stock-service user-service store-service sales-service refund-service client-service 2>NUL
 
 echo [3/8] Removing infrastructure services...
 kubectl delete deployment postgres redis 2>NUL

@@ -47,7 +47,6 @@ model Product {
   stocks      Stock[]
   saleLines   SaleLine[]    @relation("ProductToSaleLine")
   refundLines RefundLine[]  @relation("ProductToRefundLine")
-  cartItems   CartItem[]
 
   @@map("Product")
 }
@@ -91,7 +90,6 @@ model User {
   password String  @default("password") // Simple authentication
   sales    Sale[]
   refunds  Refund[]
-  cart     Cart?
 
   @@map("User")
 }
@@ -185,27 +183,5 @@ model RefundLine {
   productId   Int
 
   @@map("RefundLine")
-}
-
-model Cart {
-  id        String     @id @default(uuid())
-  user      User?      @relation(fields: [userId], references: [id])
-  userId    Int?       @unique
-  items     CartItem[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-
-  @@map("Cart")
-}
-
-model CartItem {
-  id        Int      @id @default(autoincrement())
-  quantity  Int
-  product   Product  @relation(fields: [productId], references: [id])
-  productId Int
-  cart      Cart     @relation(fields: [cartId], references: [id])
-  cartId    String
-
-  @@map("CartItem")
 }
 

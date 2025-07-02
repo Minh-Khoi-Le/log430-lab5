@@ -464,39 +464,45 @@ class SalesService {
     const timer = logger.startTimer();
     
     try {
-      const validStatuses = ['COMPLETED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED'];
+      const validStatuses = ['active', 'refunded', 'partially_refunded', 'cancelled'];
+      const normalizedStatus = status.toLowerCase();
       
-      if (!validStatuses.includes(status)) {
-        throw new BaseError('Invalid sale status', 400);
+      if (!validStatuses.includes(normalizedStatus)) {
+        throw new BaseError(`Invalid sale status: ${status}. Valid statuses: ${validStatuses.join(', ')}`, 400, 'INVALID_STATUS');
+      }
+
+      // Convert status names to match frontend expectations
+      let finalStatus = normalizedStatus;
+      if (normalizedStatus === 'refunded') {
+        finalStatus = 'REFUNDED';
+      } else if (normalizedStatus === 'partially_refunded') {
+        finalStatus = 'PARTIALLY_REFUNDED';
       }
 
       const sale = await getPrisma().sale.update({
         where: { id: saleId },
         data: {
-          status,
-          updatedAt: new Date(),
-          metadata: {
-            lastUpdatedBy: userInfo.id,
-            statusHistory: {
-              previous: 'COMPLETED', // This would be tracked in a real implementation
-              new: status,
-              updatedAt: new Date().toISOString(),
-              updatedBy: userInfo.id
-            }
-          }
+          status: finalStatus
         },
         include: {
-          items: true
+          lines: {
+            include: {
+              product: true
+            }
+          },
+          store: true,
+          user: true
         }
       });
 
       // Invalidate caches
-      await this.invalidateRelevantCaches(sale.storeId, saleId);
+      await this.invalidateRelevantCaches(sale.storeId, saleId, sale.userId);
 
       logger.info('Sale status updated successfully', {
         saleId,
-        status,
-        userId: userInfo.id,
+        oldStatus: 'active', // We don't track previous status
+        newStatus: finalStatus,
+        userId: userInfo?.id,
         duration: timer.getDuration()
       });
 
@@ -507,7 +513,7 @@ class SalesService {
         error: error.message,
         saleId,
         status,
-        userId: userInfo.id,
+        userId: userInfo?.id,
         duration: timer.getDuration()
       });
       
@@ -515,7 +521,7 @@ class SalesService {
         throw error;
       }
       
-      throw new BaseError('Failed to update sale status', 500);
+      throw new BaseError('Failed to update sale status', 500, 'INTERNAL_ERROR');
     }
   }
 
@@ -879,7 +885,7 @@ class SalesService {
     }
   }
 
-  async invalidateRelevantCaches(storeId, saleId = null) {
+  async invalidateRelevantCaches(storeId, saleId = null, userId = null) {
     try {
       const redis = getRedisClient();
       const patterns = [
@@ -891,14 +897,29 @@ class SalesService {
         patterns.push(`sale:${saleId}:*`);
       }
       
+      if (userId) {
+        patterns.push(`sales:customer:${userId}*`);
+      }
+      
+      // Also invalidate all customer sales caches since we might not have the userId
+      patterns.push(`sales:customer:*`);
+      
       for (const pattern of patterns) {
         const keys = await redis.keys(pattern);
         if (keys.length > 0) {
           await redis.del(...keys);
         }
       }
+      
+      logger.info('Sales cache invalidated successfully', {
+        storeId,
+        saleId,
+        userId,
+        patterns,
+        invalidatedPatterns: patterns.length
+      });
     } catch (error) {
-      logger.warn('Cache invalidation failed', { storeId, saleId, error: error.message });
+      logger.warn('Cache invalidation failed', { storeId, saleId, userId, error: error.message });
     }
   }
 }

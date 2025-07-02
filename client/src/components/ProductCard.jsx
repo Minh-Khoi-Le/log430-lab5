@@ -8,7 +8,7 @@
  */
 
 import React from "react";
-import { useCart } from "../context/CartContext";
+import { useLocalCart } from "../hooks/useLocalCart";
 import { useUser } from "../context/UserContext";
 import {
   Card,
@@ -29,7 +29,7 @@ import StorefrontIcon from "@mui/icons-material/Storefront";
 const ProductCard = ({ product, onEdit, onDelete }) => {
   // State for hover effects
   const [hover, setHover] = React.useState(false);
-  const { addToCart } = useCart();
+  const { addToCart } = useLocalCart();
   const { user } = useUser();
   
   // Calculate total stock across all stores (for manager)

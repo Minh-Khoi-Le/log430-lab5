@@ -54,15 +54,6 @@ services:
       - internal
       - refund
       - service-to-service
-    
-  # Internal Cart Service Communication
-  - name: internal-cart-service
-    host: cart-service-upstream
-    tags:
-      - internal
-      - cart
-      - service-to-service
-      - load-balanced
 
 # Internal Routes - Service-to-Service API Access
 routes:
@@ -120,16 +111,7 @@ routes:
     strip_path: true
     preserve_host: false
     
-  # Internal Cart Service Routes
-  - name: internal-cart-routes
-    service:
-      name: internal-cart-service
-    paths:
-      - /internal/cart
-    strip_path: true
-    preserve_host: false
-
-# Internal Security Plugins
+  # Internal Security Plugins
 plugins:
   # Service-to-Service Authentication
   - name: key-auth
@@ -261,11 +243,3 @@ consumers:
       - refund
     keyauth_credentials:
       - key: refund-service-internal-token-pqrst
-    
-  # Cart Service Consumer
-  - username: cart-service-internal
-    tags:
-      - internal-service
-      - cart
-    keyauth_credentials:
-      - key: cart-service-internal-token-uvwxy

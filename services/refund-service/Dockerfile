@@ -12,7 +12,6 @@ COPY .npmrc .
 
 # Copy all package.json files to leverage Docker caching
 COPY package.json .
-COPY services/cart-service/package.json services/cart-service/
 COPY services/product-service/package.json services/product-service/
 COPY services/refund-service/package.json services/refund-service/
 COPY services/sales-service/package.json services/sales-service/

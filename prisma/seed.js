@@ -10,7 +10,8 @@
  * Usage: npm run seed or node prisma/seed.js
  */
 
-import { PrismaClient } from '@prisma/client';
+import pkg from '@prisma/client';
+const { PrismaClient } = pkg;
 import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -21,8 +22,6 @@ async function main() {
   try {
     // Clear existing data (optional - remove if you want to preserve data)
     console.log('Clearing existing data...');
-    await prisma.cartItem.deleteMany();
-    await prisma.cart.deleteMany();
     await prisma.refundLine.deleteMany();
     await prisma.refund.deleteMany();
     await prisma.saleLine.deleteMany();
@@ -60,14 +59,14 @@ async function main() {
     console.log('Creating stores...');
     const store1 = await prisma.store.create({
       data: {
-        name: 'Downtown Electronics',
+        name: 'Downtown Store',
         address: '123 Main Street, Downtown, QC H1A 1A1',
       },
     });
 
     const store2 = await prisma.store.create({
       data: {
-        name: 'Mall Tech Hub',
+        name: 'Mall Store',
         address: '456 Shopping Center, Mall District, QC H2B 2B2',
       },
     });
@@ -84,60 +83,149 @@ async function main() {
     // 3. Create Products
     console.log('Creating products...');
     const products = await Promise.all([
+      // Electronics
       prisma.product.create({
         data: {
-          name: 'iPhone 15 Pro',
-          price: 1299.99,
-          description: 'Latest Apple smartphone with titanium design and advanced camera system',
+          name: 'Wireless Headphones',
+          price: 89.99,
+          description: 'Comfortable over-ear wireless headphones with noise cancellation',
         },
       }),
       prisma.product.create({
         data: {
-          name: 'MacBook Air M3',
-          price: 1499.99,
-          description: '13-inch laptop with M3 chip, perfect for everyday computing',
+          name: 'Smartphone 128GB',
+          price: 599.99,
+          description: 'Latest smartphone with high-resolution camera and fast processor',
         },
       }),
       prisma.product.create({
         data: {
-          name: 'AirPods Pro 2nd Gen',
-          price: 329.99,
-          description: 'Premium wireless earbuds with active noise cancellation',
+          name: 'Laptop 15-inch',
+          price: 899.99,
+          description: '15-inch laptop with SSD storage and 8GB RAM',
         },
       }),
       prisma.product.create({
         data: {
-          name: 'iPad Air',
-          price: 749.99,
-          description: '10.9-inch tablet with M1 chip and Apple Pencil support',
-        },
-      }),
-      prisma.product.create({
-        data: {
-          name: 'Apple Watch Series 9',
-          price: 499.99,
-          description: 'Advanced smartwatch with health monitoring and fitness tracking',
-        },
-      }),
-      prisma.product.create({
-        data: {
-          name: 'Magic Keyboard',
-          price: 199.99,
-          description: 'Wireless keyboard with numeric keypad and Touch ID',
-        },
-      }),
-      prisma.product.create({
-        data: {
-          name: 'Magic Mouse',
-          price: 99.99,
-          description: 'Multi-touch wireless mouse with sleek design',
-        },
-      }),
-      prisma.product.create({
-        data: {
-          name: 'USB-C to Lightning Cable',
+          name: 'Wireless Mouse',
           price: 29.99,
-          description: '1-meter cable for fast charging and data transfer',
+          description: 'Ergonomic wireless mouse with long battery life',
+        },
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Bluetooth Speaker',
+          price: 49.99,
+          description: 'Portable Bluetooth speaker with premium sound quality',
+        },
+      }),
+      // Home & Garden
+      prisma.product.create({
+        data: {
+          name: 'Coffee Maker',
+          price: 79.99,
+          description: 'Programmable coffee maker with 12-cup capacity',
+        },
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Air Purifier',
+          price: 159.99,
+          description: 'HEPA air purifier for rooms up to 300 sq ft',
+        },
+      }),
+      prisma.product.create({
+        data: {
+          name: 'LED Desk Lamp',
+          price: 34.99,
+          description: 'Adjustable LED desk lamp with USB charging port',
+        },
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Plant Pot Set',
+          price: 24.99,
+          description: 'Set of 3 ceramic plant pots with drainage holes',
+        },
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Kitchen Scale',
+          price: 19.99,
+          description: 'Digital kitchen scale with precision measurements',
+        },
+      }),
+      // Clothing & Accessories
+      prisma.product.create({
+        data: {
+          name: 'Cotton T-Shirt',
+          price: 14.99,
+          description: '100% cotton t-shirt available in multiple colors',
+        },
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Denim Jeans',
+          price: 59.99,
+          description: 'Classic fit denim jeans with comfort stretch',
+        },
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Running Shoes',
+          price: 89.99,
+          description: 'Lightweight running shoes with cushioned sole',
+        },
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Leather Wallet',
+          price: 39.99,
+          description: 'Genuine leather wallet with RFID blocking technology',
+        },
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Baseball Cap',
+          price: 19.99,
+          description: 'Adjustable baseball cap with embroidered logo',
+        },
+      }),
+      // Sports & Fitness
+      prisma.product.create({
+        data: {
+          name: 'Yoga Mat',
+          price: 29.99,
+          description: 'Non-slip yoga mat with carrying strap',
+        },
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Water Bottle',
+          price: 16.99,
+          description: 'Insulated stainless steel water bottle 32oz',
+        },
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Resistance Bands Set',
+          price: 24.99,
+          description: 'Set of 5 resistance bands with different resistance levels',
+        },
+      }),
+      // Books & Media
+      prisma.product.create({
+        data: {
+          name: 'Programming Book',
+          price: 44.99,
+          description: 'Comprehensive guide to modern programming languages',
+        },
+      }),
+      prisma.product.create({
+        data: {
+          name: 'Notebook Set',
+          price: 12.99,
+          description: 'Set of 3 lined notebooks for writing and journaling',
         },
       }),
     ]);
@@ -150,8 +238,9 @@ async function main() {
     
     for (const store of stores) {
       for (const product of products) {
-        // Generate random stock quantities between 5 and 50
-        const quantity = Math.floor(Math.random() * 46) + 5;
+        // Generate random stock quantities between 0 and 100
+        // Some products might be out of stock (0), others well-stocked
+        const quantity = Math.floor(Math.random() * 101);
         
         await prisma.stock.create({
           data: {
@@ -165,60 +254,40 @@ async function main() {
 
     console.log('Created stock data for all products in all stores');
 
-    // 5. Create sample carts for users
-    console.log('Creating sample carts...');
-    
-    // Create cart for client user
-    const clientCart = await prisma.cart.create({
-      data: {
-        userId: clientUser.id,
-        items: {
-          create: [
-            {
-              productId: products[0].id, // iPhone 15 Pro
-              quantity: 1,
-            },
-            {
-              productId: products[2].id, // AirPods Pro
-              quantity: 2,
-            },
-          ],
-        },
-      },
-    });
-
-    console.log(`Created cart for ${clientUser.name} with ${await prisma.cartItem.count({ where: { cartId: clientCart.id } })} items`);
-
-    // 6. Create sample sales
+    // 5. Create sample sales
     console.log('Creating sample sales...');
     
     const sale1 = await prisma.sale.create({
       data: {
         storeId: store1.id,
         userId: clientUser.id,
-        total: 1629.98, // iPhone + AirPods
+        total: 739.97, // Smartphone + Wireless Headphones + Bluetooth Speaker
         status: 'active',
         lines: {
           create: [
             {
-              productId: products[0].id, // iPhone 15 Pro
+              productId: products[1].id, // Smartphone 128GB
+              quantity: 1,
+              unitPrice: products[1].price,
+            },
+            {
+              productId: products[0].id, // Wireless Headphones
               quantity: 1,
               unitPrice: products[0].price,
             },
             {
-              productId: products[2].id, // AirPods Pro
+              productId: products[4].id, // Bluetooth Speaker
               quantity: 1,
-              unitPrice: products[2].price,
+              unitPrice: products[4].price,
             },
           ],
         },
       },
     });
 
-    
     console.log(`Created ${await prisma.sale.count()} sales transactions`);
 
-    // 7. Create a sample refund
+    // 6. Create a sample refund
     console.log('Creating sample refund...');
     
     await prisma.refund.create({
@@ -226,14 +295,14 @@ async function main() {
         saleId: sale1.id,
         storeId: store1.id,
         userId: clientUser.id,
-        total: 329.99, // AirPods refund
-        reason: 'Product defect - customer reported connectivity issues',
+        total: 49.99, // Bluetooth Speaker refund
+        reason: 'Product defect - customer reported poor sound quality',
         lines: {
           create: [
             {
-              productId: products[2].id, // AirPods Pro
+              productId: products[4].id, // Bluetooth Speaker
               quantity: 1,
-              unitPrice: products[2].price,
+              unitPrice: products[4].price,
             },
           ],
         },

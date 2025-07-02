@@ -143,6 +143,7 @@ services:
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=your-secret-key-change-in-production
+      - API_KEYS=internal-service-key,frontend-app-key-12345
     ports:
       - "3005:3005"
     depends_on:
@@ -168,6 +169,8 @@ services:
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=your-secret-key-change-in-production
+      - API_KEYS=internal-service-key,frontend-app-key-12345
+      - SALES_SERVICE_URL=http://sales-service:3005
     ports:
       - "3006:3006"
     depends_on:
@@ -181,32 +184,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  # Cart Service
-  cart-service:
-    build:
-      context: .
-      dockerfile: services/cart-service/Dockerfile
-    environment:
-      - NODE_ENV=development
-      - PORT=3007
-      - DATABASE_URL=postgresql://postgres:password@postgres:5432/log430_store
-      - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=your-secret-key-change-in-production
-    ports:
-      - "3007:3007"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3007/health', (res) => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
 
   # Database migration service
   db-migrate:
@@ -264,7 +241,6 @@ services:
       - stock-service
       - sales-service
       - refund-service
-      - cart-service
     restart: unless-stopped
     profiles:
       - kong

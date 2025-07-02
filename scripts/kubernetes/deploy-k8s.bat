@@ -1,6 +1,9 @@
 @echo off
 REM Kubernetes Deployment Script for LOG430 Lab 5 Microservices
-REM Deploys the complete load-balanced microservices architecture to Kubernetes
+REM Deploys thekubectkubectl wait --for=condition=available --timeout=300s deployment/stock-service-1
+kubectl wait --for=condition=available --timeout=300s deployment/stock-service-2ait --for=condition=available --timeout=300s deployment/product-service-1
+kubectl wait --for=condition=available --timeout=300s deployment/product-service-2
+kubectl wait --for=condition=available --timeout=300s deployment/stock-service-1lete load-balanced microservices architecture to Kubernetes
 
 echo ========================================
 echo   LOG430 Lab 5 - Kubernetes Deployment
@@ -40,8 +43,6 @@ cd services\product-service
 docker build -t product-service:latest .
 cd ..\stock-service
 docker build -t stock-service:latest .
-cd ..\cart-service
-docker build -t cart-service:latest .
 cd ..\user-service
 docker build -t user-service:latest .
 cd ..\store-service
@@ -70,7 +71,6 @@ kubectl apply -f k8s\redis.yaml
 echo [2/8] Deploying load-balanced microservices...
 kubectl apply -f k8s\product-service.yaml
 kubectl apply -f k8s\stock-service.yaml
-kubectl apply -f k8s\cart-service.yaml
 
 echo [3/8] Deploying single-instance microservices...
 kubectl apply -f k8s\single-services.yaml

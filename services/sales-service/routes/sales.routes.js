@@ -20,12 +20,29 @@ import express from 'express';
 // Import shared middleware
 import { 
   authenticate,
+  authenticateApiKey,
   validateId
 } from '../../shared/index.js';
 
 import * as salesController from '../controllers/sales.controller.js';
 
 const router = express.Router();
+
+// Combined authentication middleware for internal and external calls
+const authenticateOrApiKey = async (req, res, next) => {
+  try {
+    // Check if this is an API key request (service-to-service)
+    const apiKey = req.headers['x-api-key'];
+    if (apiKey) {
+      return authenticateApiKey(req, res, next);
+    }
+    
+    // Otherwise, use JWT authentication
+    return authenticate(req, res, next);
+  } catch (error) {
+    next(error);
+  }
+};
 
 /**
  * Sales Transaction Routes
@@ -52,7 +69,7 @@ router.get('/:saleId',
 
 // Update sale status
 router.patch('/:saleId/status',
-  authenticate,
+  authenticateOrApiKey,
   validateId('saleId'),
   salesController.updateSaleStatus
 );
