@@ -158,22 +158,44 @@ const History = () => {
     
     try {
       // Fetch purchase history using the customer endpoint
-      const purchasesData = await authenticatedFetch(
+      const purchasesResponse = await authenticatedFetch(
         API_ENDPOINTS.SALES.BY_CUSTOMER(user.id),
         user.token
       );
-      setPurchases(Array.isArray(purchasesData) ? purchasesData : []);
+      
+      // Handle the API response structure: { success: true, data: [...], pagination: {...} }
+      let purchasesArray = [];
+      if (purchasesResponse && purchasesResponse.data) {
+        if (Array.isArray(purchasesResponse.data)) {
+          purchasesArray = purchasesResponse.data;
+        }
+      } else if (Array.isArray(purchasesResponse)) {
+        purchasesArray = purchasesResponse;
+      }
+      
+      setPurchases(purchasesArray);
       
       // Fetch refund history - use generic endpoint and filter client-side for now
       try {
-        const refundsData = await authenticatedFetch(
+        const response = await authenticatedFetch(
           API_ENDPOINTS.REFUNDS.BASE, 
           user.token
         );
-        // Filter refunds for this user (assuming refunds have a userId or customer field)
-        const userRefunds = Array.isArray(refundsData) ? 
-          refundsData.filter(refund => refund.userId === user.id || refund.customerId === user.id) : 
-          [];
+        
+        // Handle the API response structure: { success: true, data: { refunds: [...], pagination: {...} } }
+        let refundsArray = [];
+        if (response && response.data) {
+          if (Array.isArray(response.data.refunds)) {
+            refundsArray = response.data.refunds;
+          } else if (Array.isArray(response.data)) {
+            refundsArray = response.data;
+          }
+        } else if (Array.isArray(response)) {
+          refundsArray = response;
+        }
+        
+        // Filter refunds for this user (assuming refunds have a userId field)
+        const userRefunds = refundsArray.filter(refund => refund.userId === user.id);
         setRefunds(userRefunds);
       } catch (refundErr) {
         console.warn("Could not fetch refunds:", refundErr);

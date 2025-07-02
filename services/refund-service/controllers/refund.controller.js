@@ -132,9 +132,7 @@ export const getRefundsByStore = asyncHandler(async (req, res) => {
   recordOperation('refund_get_by_store', 'start');
 
   try {
-    const options = {
-      page: parseInt(page),
-      limit: parseInt(limit),
+    const filters = {
       status,
       startDate,
       endDate,
@@ -142,7 +140,12 @@ export const getRefundsByStore = asyncHandler(async (req, res) => {
       maxAmount: maxAmount ? parseFloat(maxAmount) : undefined
     };
 
-    const result = await RefundService.getRefundsByStore(storeId, options, req.user);
+    const pagination = {
+      page: parseInt(page),
+      limit: parseInt(limit)
+    };
+
+    const result = await RefundService.getRefundsByStore(parseInt(storeId), filters, pagination);
 
     recordOperation('refund_get_by_store', 'success');
 

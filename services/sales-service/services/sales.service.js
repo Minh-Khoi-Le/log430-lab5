@@ -522,9 +522,10 @@ class SalesService {
   /**
    * Get all sales for a specific customer, with product and store details.
    * @param {string} customerId - The ID of the customer.
-   * @returns {Promise<Array>} - A promise that resolves to a list of sales.
+   * @param {Object} pagination - Pagination options
+   * @returns {Promise<Object>} - A promise that resolves to sales data with pagination
    */
-  async getSalesByCustomer(customerId) {
+  async getSalesByCustomer(customerId, pagination = {}) {
     const timer = logger.startTimer();
     
     try {
@@ -537,8 +538,17 @@ class SalesService {
         return cachedResult;
       }
 
+      const where = { userId: parseInt(customerId) };
+
+      // Get total count
+      const totalCount = await getPrisma().sale.count({ where });
+
+      // Get paginated results
+      const { page = 1, limit = 50 } = pagination;
+      const offset = (page - 1) * limit;
+
       const sales = await getPrisma().sale.findMany({
-        where: { userId: parseInt(customerId) },
+        where,
         include: {
           lines: {
             include: {
@@ -555,11 +565,18 @@ class SalesService {
         },
         orderBy: {
           date: 'desc'
-        }
+        },
+        skip: offset,
+        take: limit
       });
 
+      const result = {
+        sales,
+        total: totalCount
+      };
+
       // Cache the result for 5 minutes
-      await this.setCachedResult(cacheKey, sales, 300);
+      await this.setCachedResult(cacheKey, result, 300);
 
       logger.info('Sales data retrieved successfully', {
         customerId,
@@ -567,7 +584,7 @@ class SalesService {
         duration: timer.getDuration()
       });
 
-      return sales;
+      return result;
 
     } catch (error) {
       logger.error('Error retrieving sales data by customer', {
@@ -856,7 +873,7 @@ class SalesService {
   async setCachedResult(key, data, ttl = 300) {
     try {
       const redis = getRedisClient();
-      await redis.setex(key, ttl, JSON.stringify(data));
+      await redis.setEx(key, ttl, JSON.stringify(data));
     } catch (error) {
       logger.warn('Cache storage failed', { key, error: error.message });
     }
