@@ -1,0 +1,125 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  # User Service
+  - name: user-service
+    url: http://user-service:3000
+    routes:
+      - name: user-routes
+        paths:
+          - /api/users
+        strip_path: false
+      - name: auth-routes
+        paths:
+          - /api/auth
+        strip_path: false
+    tags:
+      - microservice
+      - user
+
+  # Catalog Service (Products, Stores, Stock)
+  - name: catalog-service
+    url: http://catalog-service:3000
+    routes:
+      - name: product-routes
+        paths:
+          - /api/products
+        strip_path: false
+      - name: store-routes
+        paths:
+          - /api/stores
+        strip_path: false
+      - name: stock-routes
+        paths:
+          - /api/stock
+        strip_path: false
+    tags:
+      - microservice
+      - catalog
+
+  # Transaction Service (Sales, Refunds)
+  - name: transaction-service
+    url: http://transaction-service:3000
+    routes:
+      - name: sales-routes
+        paths:
+          - /api/sales
+        strip_path: false
+      - name: refund-routes
+        paths:
+          - /api/refunds
+        strip_path: false
+    tags:
+      - microservice
+      - transaction
+
+# Global plugins
+plugins:
+  - name: cors
+    config:
+      origins:
+        - "*"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      headers:
+        - Accept
+        - Accept-Version
+        - Content-Length
+        - Content-MD5
+        - Content-Type
+        - Date
+        - X-Auth-Token
+        - Authorization
+      exposed_headers:
+        - X-Auth-Token
+      credentials: true
+      max_age: 3600
+
+  - name: rate-limiting
+    config:
+      minute: 300
+      hour: 1000
+      policy: local
+
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 1024
+
+# Service-specific plugins
+  - name: key-auth
+    service: catalog-service
+    config:
+      key_names:
+        - apikey
+        - X-API-Key
+      hide_credentials: true
+
+  - name: key-auth
+    service: user-service
+    config:
+      key_names:
+        - apikey
+        - X-API-Key
+      hide_credentials: true
+
+  - name: key-auth
+    service: transaction-service
+    config:
+      key_names:
+        - apikey
+        - X-API-Key
+      hide_credentials: true
+
+# API Key consumers
+consumers:
+  - username: frontend-app
+    keyauth_credentials:
+      - key: frontend-app-key-12345
+  - username: mobile-app
+    keyauth_credentials:
+      - key: mobile-app-key-67890
