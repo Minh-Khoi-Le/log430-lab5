@@ -1,39 +1,49 @@
-FROM node:18-alpine
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Install module-alias and tsconfig-paths globally for path resolution
-RUN npm install -g module-alias typescript tsconfig-paths
+# Install TypeScript globally for faster builds
+RUN npm install -g typescript
 
-# Copy package files
+# Copy package files first for better caching
 COPY services/catalog-service/package*.json ./
-COPY services/catalog-service/tsconfig.json ./
 COPY shared/ ./shared/
 
 # Install ALL dependencies
 RUN npm install
 
-# Copy source code
+# Copy source code and configuration
 COPY services/catalog-service/ ./
 COPY prisma/ ./prisma/
 
-# Create a tsconfig that allows compilation with errors
-RUN echo '{ "extends": "./tsconfig.json", "compilerOptions": { "skipLibCheck": true, "noEmitOnError": false } }' > tsconfig.build.json
+# Generate Prisma client
+RUN npx prisma generate --schema=./prisma/schema.prisma
 
-# Copy start script instead of path-aliases.js
+# Create optimized tsconfig for build
+RUN echo '{ "extends": "./tsconfig.json", "compilerOptions": { "skipLibCheck": true, "noEmitOnError": false, "incremental": true }, "include": ["**/*", "../shared/**/*"] }' > tsconfig.build.json
+
+# Build TypeScript code
+RUN npx tsc -p tsconfig.build.json || echo "Build completed with errors"
+
+# Production stage
+FROM node:18-alpine AS production
+
+WORKDIR /app
+
+# Copy package.json and install only production dependencies
+COPY services/catalog-service/package*.json ./
+RUN npm install --omit=dev && npm cache clean --force
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+# Copy start script
 COPY services/catalog-service/start.js ./
-
-# Generate Prisma client from schema in /src/prisma
-RUN npx prisma generate --schema=./prisma/schema.prisma || echo "Prisma generate failed, continuing..." \
- && echo "Checking if Prisma client exists..." \
- && ls -la node_modules/@prisma/client/ || echo "Prisma client directory not found"
-
-# Build TypeScript code - force it to complete even with errors
-RUN npx tsc -p tsconfig.build.json || echo "Build completed with some errors" && \
-	echo "Checking compiled files:" && ls -la dist/
 
 # Expose port
 EXPOSE 3000
 
-# Start the application with module aliases
+# Start the service
 CMD ["node", "start.js"]

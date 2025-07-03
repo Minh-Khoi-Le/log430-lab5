@@ -135,21 +135,21 @@ app.use((err: Error, req: any, res: any, next: any) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Transaction Service running on port ${PORT}`);
+  console.log(`Transaction Service running on port ${PORT}`);
 });
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down gracefully');
   await prisma.$disconnect();
-  await redisClient.disconnect().catch(err => logger.error('Error disconnecting Redis', err as Error));
+  await redisClient.disconnect().catch((err: Error) => logger.error('Error disconnecting Redis', err));
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   logger.info('SIGINT received, shutting down gracefully');
   await prisma.$disconnect();
-  await redisClient.disconnect().catch(err => logger.error('Error disconnecting Redis', err as Error));
+  await redisClient.disconnect().catch((err: Error) => logger.error('Error disconnecting Redis', err));
   process.exit(0);
 });
 

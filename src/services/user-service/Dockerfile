@@ -1,44 +1,56 @@
-FROM node:18-alpine
+FROM node:18-alpine AS builder
 
 # Create app directory
 WORKDIR /app
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001 && \
-    npm install -g module-alias typescript tsconfig-paths
+# Install TypeScript globally for faster builds
+RUN npm install -g typescript
 
-# Copy package.json files
+# Copy package.json files first for better caching
 COPY services/user-service/package*.json ./
-# Copy shared code from monorepo root
 COPY shared/ ./shared/
 
 # Install dependencies
 RUN npm install
 
-# Copy source code
+# Copy source code and configuration
 COPY services/user-service/ ./
 COPY prisma/ ./prisma/
 
-# Create a tsconfig that allows compilation with errors
-RUN echo '{ "extends": "./tsconfig.json", "compilerOptions": { "skipLibCheck": true, "noEmitOnError": false } }' > tsconfig.build.json
+# Generate Prisma client
+RUN npx prisma generate --schema=./prisma/schema.prisma
 
-# Copy start script instead of path-aliases.js
-COPY services/user-service/start.js ./
-
-# Generate Prisma client from schema in /src/prisma
-RUN npx prisma generate --schema=./prisma/schema.prisma || echo "Prisma generate failed, continuing..." \
- && echo "Checking if Prisma client exists..." \
- && ls -la node_modules/@prisma/client/ || echo "Prisma client directory not found"
+# Create optimized tsconfig for build
+RUN echo '{ "extends": "./tsconfig.json", "compilerOptions": { "skipLibCheck": true, "noEmitOnError": false, "incremental": true }, "include": ["**/*", "../shared/**/*"] }' > tsconfig.build.json
 
 # Build TypeScript code
-RUN npx tsc -p tsconfig.build.json || echo "Build completed with some errors" && \
-    echo "Checking compiled files:" && ls -la dist/
+RUN npx tsc -p tsconfig.build.json || echo "Build completed with errors"
 
-# Switch to the non-root user
+# Production stage
+FROM node:18-alpine AS production
+
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+
+# Copy package.json and install only production dependencies
+COPY services/user-service/package*.json ./
+RUN npm install --omit=dev && npm cache clean --force
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+
+# Copy start script
+COPY services/user-service/start.js ./
+
+# Switch to non-root user
 USER nodejs
 
-# Expose the port for the service
+# Expose the port
 EXPOSE 3000
 
-# Start the service with module aliases
+# Start the service
 CMD ["node", "start.js"]
