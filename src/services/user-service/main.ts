@@ -1,3 +1,4 @@
+import 'module-alias/register';
 import express from 'express';
 import { json } from 'body-parser';
 import cors from 'cors';
@@ -5,9 +6,9 @@ import { PrismaClient } from '@prisma/client';
 import { UserController } from './infrastructure/http/user.controller';
 import { AuthController } from './infrastructure/http/auth.controller';
 import { authenticate } from './infrastructure/middleware/auth.middleware';
-import { createLogger } from '../../shared/infrastructure/logging';
-import { requestLogger } from '../../shared/infrastructure/http';
-import { redisClient, CacheService, createCacheMiddleware } from '../../shared/infrastructure/caching';
+import { createLogger } from '@shared/infrastructure/logging';
+import { requestLogger } from '@shared/infrastructure/http';
+import { redisClient, CacheService, createCacheMiddleware } from '@shared/infrastructure/caching';
 
 // Create a logger for the user service
 const logger = createLogger('user-service');

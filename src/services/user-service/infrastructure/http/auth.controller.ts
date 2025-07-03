@@ -2,8 +2,8 @@ import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { CacheService } from '../../../../shared/infrastructure/caching';
-import { createLogger } from '../../../../shared/infrastructure/logging';
+import { CacheService } from '@shared/infrastructure/caching';
+import { createLogger } from '@shared/infrastructure/logging';
 
 // Create a logger for the AuthController
 const logger = createLogger('auth-controller');

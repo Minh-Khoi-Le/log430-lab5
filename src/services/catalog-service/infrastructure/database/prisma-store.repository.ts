@@ -10,12 +10,12 @@ export class PrismaStoreRepository implements StoreRepository {
       where: { id }
     });
     
-    return store ? new Store(store.id, store.name, store.address) : null;
+    return store ? new Store(store.id, store.name, store.address ?? undefined) : null;
   }
 
   async findAll(): Promise<Store[]> {
     const stores = await this.prisma.store.findMany();
-    return stores.map((store: any) => new Store(store.id, store.name, store.address));
+    return stores.map((store: any) => new Store(store.id, store.name, store.address ?? undefined));
   }
 
   async save(store: Store): Promise<Store> {
@@ -26,7 +26,7 @@ export class PrismaStoreRepository implements StoreRepository {
       }
     });
     
-    return new Store(savedStore.id, savedStore.name, savedStore.address);
+    return new Store(savedStore.id, savedStore.name, savedStore.address ?? undefined);
   }
 
   async update(id: number, store: Partial<Store>): Promise<Store> {
@@ -38,7 +38,7 @@ export class PrismaStoreRepository implements StoreRepository {
       }
     });
     
-    return new Store(updatedStore.id, updatedStore.name, updatedStore.address);
+    return new Store(updatedStore.id, updatedStore.name, updatedStore.address ?? undefined);
   }
 
   async delete(id: number): Promise<void> {
@@ -57,6 +57,6 @@ export class PrismaStoreRepository implements StoreRepository {
       }
     });
     
-    return stores.map((store: { id: number; name: string; address: string }) => new Store(store.id, store.name, store.address));
+    return stores.map((store: { id: number; name: string; address: string | null }) => new Store(store.id, store.name, store.address ?? undefined));
   }
 }

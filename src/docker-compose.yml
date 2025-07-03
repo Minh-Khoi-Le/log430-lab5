@@ -41,7 +41,6 @@ services:
       - "8444:8444"  # Admin API (SSL)
     volumes:
       - ./api-gateway/kong/kong.yml:/etc/kong/kong.yml
-      - ./api-gateway/kong/plugins:/usr/local/share/lua/5.1/kong/plugins
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: "/etc/kong/kong.yml"

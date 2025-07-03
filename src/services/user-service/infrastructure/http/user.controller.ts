@@ -3,8 +3,8 @@ import { PrismaClient } from '@prisma/client';
 import { UserService } from '../../domain/services/user.service';
 import { UserDTO } from '../../application/dtos/user.dto';
 import { PrismaUserRepository } from '../database/prisma-user.repository';
-import { createLogger } from '../../../../shared/infrastructure/logging';
-import { CacheService, createCacheMiddleware } from '../../../../shared/infrastructure/caching';
+import { createLogger } from '@shared/infrastructure/logging';
+import { CacheService, createCacheMiddleware } from '@shared/infrastructure/caching';
 
 // Create a logger for the UserController
 const logger = createLogger('user-controller');

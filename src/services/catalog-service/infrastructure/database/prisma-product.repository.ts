@@ -10,12 +10,12 @@ export class PrismaProductRepository implements ProductRepository {
       where: { id }
     });
     
-    return product ? new Product(product.id, product.name, product.price, product.description) : null;
+    return product ? new Product(product.id, product.name, product.price, product.description ?? undefined) : null;
   }
 
   async findAll(): Promise<Product[]> {
     const products = await this.prisma.product.findMany();
-    return products.map((product: any) => new Product(product.id, product.name, product.price, product.description));
+    return products.map((product: any) => new Product(product.id, product.name, product.price, product.description ?? undefined));
   }
 
   async save(product: Product): Promise<Product> {
@@ -27,7 +27,7 @@ export class PrismaProductRepository implements ProductRepository {
       }
     });
     
-    return new Product(savedProduct.id, savedProduct.name, savedProduct.price, savedProduct.description);
+    return new Product(savedProduct.id, savedProduct.name, savedProduct.price, savedProduct.description ?? undefined);
   }
 
   async update(id: number, product: Partial<Product>): Promise<Product> {
@@ -40,7 +40,7 @@ export class PrismaProductRepository implements ProductRepository {
       }
     });
     
-    return new Product(updatedProduct.id, updatedProduct.name, updatedProduct.price, updatedProduct.description);
+    return new Product(updatedProduct.id, updatedProduct.name, updatedProduct.price, updatedProduct.description ?? undefined);
   }
 
   async delete(id: number): Promise<void> {
@@ -59,6 +59,6 @@ export class PrismaProductRepository implements ProductRepository {
       }
     });
     
-    return products.map((product: { id: number; name: string; price: number; description: string }) => new Product(product.id, product.name, product.price, product.description));
+    return products.map((product: { id: number; name: string; price: number; description: string | null }) => new Product(product.id, product.name, product.price, product.description ?? undefined));
   }
 }
