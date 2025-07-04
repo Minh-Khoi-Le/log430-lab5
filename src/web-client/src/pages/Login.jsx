@@ -187,9 +187,6 @@ function Login() {
                 <Typography variant="h5" fontWeight={700} color="primary" gutterBottom>
                   Store Retail Login
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Kong Gateway Required
-                </Typography>
                 {/* Kong Status Indicator */}
                 <Box sx={{ mt: 1 }}>
                   {kongStatus === 'loading' && (

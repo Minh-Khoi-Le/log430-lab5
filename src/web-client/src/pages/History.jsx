@@ -92,7 +92,7 @@ const History = () => {
 
   // Sort items by date
   const sortedPurchases = [...purchases]
-    // Show all sales - refunded sales will have disabled refund buttons
+    .filter(purchase => purchase.status !== 'REFUNDED') // Exclude fully refunded sales
     .sort((a, b) => {
       const dateA = new Date(a.date);
       const dateB = new Date(b.date);
@@ -130,13 +130,21 @@ const History = () => {
     
     try {
       console.log('Creating refund via Kong Gateway:', API_ENDPOINTS.REFUNDS.CREATE);
+      // Build refund payload
+      const refundPayload = {
+        saleId: refundingSale.id,
+        userId: user.id,
+        storeId: refundingSale.storeId || (refundingSale.store && refundingSale.store.id),
+        reason: refundReason || "Client requested refund",
+        lines: (refundingSale.lines || []).map(line => ({
+          productId: line.productId,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice
+        }))
+      };
       await authenticatedFetch(API_ENDPOINTS.REFUNDS.CREATE, user.token, {
         method: "POST",
-        body: JSON.stringify({
-          saleId: refundingSale.id,
-          amount: refundingSale.total,
-          reason: refundReason || "Client requested refund"
-        })
+        body: JSON.stringify(refundPayload)
       });
       
       // Clear cache by adding timestamp to force fresh data
@@ -225,16 +233,16 @@ const History = () => {
       
       // Fetch refund history via Kong Gateway
       try {
-        console.log('Fetching refunds from:', API_ENDPOINTS.REFUNDS.BASE);
+        console.log('Fetching refunds from:', API_ENDPOINTS.REFUNDS.BY_USER(user.id));
         const response = await authenticatedFetch(
-          API_ENDPOINTS.REFUNDS.BASE + cacheBuster, 
+          API_ENDPOINTS.REFUNDS.BY_USER(user.id) + cacheBuster, 
           user.token
         );
         
         console.log('Refunds response:', response);
         console.log('Response data structure:', JSON.stringify(response, null, 2));
         
-        // Handle the API response structure: { success: true, data: { refunds: [...], pagination: {...} } }
+        // Handle the API response structure: { success: true, data: [...], pagination: {...} }
         let refundsArray = [];
         if (response && response.data) {
           if (Array.isArray(response.data.refunds)) {
@@ -246,24 +254,8 @@ const History = () => {
           refundsArray = response;
         }
         
-        console.log('All refunds:', refundsArray.length);
-        console.log('User role:', user.role, 'User ID:', user.id);
-        
-        // Filter refunds based on user role
-        let userRefunds = refundsArray;
-        if (user.role === 'client') {
-          // For clients, filter to show only their refunds
-          userRefunds = refundsArray.filter(refund => {
-            console.log('Refund:', refund.id, 'userId:', refund.userId, 'matches:', refund.userId === user.id);
-            return refund.userId === user.id;
-          });
-        } else {
-          // For admins, show all refunds
-          console.log('Admin user - showing all refunds');
-        }
-        
-        console.log('Filtered refunds:', userRefunds.length);
-        setRefunds(userRefunds);
+        console.log('User refunds:', refundsArray.length);
+        setRefunds(refundsArray);
       } catch (refundErr) {
         console.warn("Could not fetch refunds via Kong Gateway:", refundErr);
         // For Kong Gateway errors, provide more specific feedback
@@ -441,9 +433,9 @@ const History = () => {
                       Purchased items:
                     </Typography>
                     <List disablePadding>
-                      {purchase.lines.map((line) => (
+                      {purchase.lines.map((line, idx) => (
                         <ListItem 
-                          key={line.id} 
+                          key={line.productId + '-' + idx} 
                           disablePadding 
                           sx={{ 
                             py: 1,
@@ -601,9 +593,9 @@ const History = () => {
                     </Typography>
                     <List disablePadding>
                       {(refund.lines && refund.lines.length > 0) ? (
-                        refund.lines.map((line) => (
+                        refund.lines.map((line, idx) => (
                           <ListItem 
-                            key={line.id} 
+                            key={line.productId + '-' + idx} 
                             disablePadding 
                             sx={{ 
                               py: 1,

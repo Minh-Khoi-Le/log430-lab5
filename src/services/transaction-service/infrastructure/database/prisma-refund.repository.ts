@@ -237,4 +237,20 @@ export class PrismaRefundRepository implements RefundRepository {
       );
     });
   }
+
+  async findByUserIdWithRelations(userId: number): Promise<any[]> {
+    return await this.prisma.refund.findMany({
+      where: { userId },
+      include: {
+        lines: {
+          include: {
+            product: true
+          }
+        },
+        store: true,
+        user: true,
+        sale: true
+      }
+    });
+  }
 }

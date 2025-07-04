@@ -17,6 +17,11 @@ export interface RefundLineDTO {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  product?: {
+    id: number;
+    name: string;
+    price: number;
+  };
 }
 
 export interface RefundResponseDTO {
@@ -28,6 +33,17 @@ export interface RefundResponseDTO {
   userId: number;
   saleId: number;
   lines: RefundLineDTO[];
+  store?: {
+    id: number;
+    name: string;
+  };
+  user?: {
+    id: number;
+    name: string;
+  };
+  sale?: {
+    id: number;
+  };
 }
 
 export interface RefundsSummaryDTO {

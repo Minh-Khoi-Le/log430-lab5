@@ -128,7 +128,13 @@ export class PrismaSaleRepository implements SaleRepository {
     const sales = await this.prisma.sale.findMany({
       where: { userId },
       include: {
-        lines: true
+        lines: {
+          include: {
+            product: true
+          }
+        },
+        store: true,
+        user: true
       }
     });
 
@@ -201,6 +207,21 @@ export class PrismaSaleRepository implements SaleRepository {
         sale.userId,
         saleLines
       );
+    });
+  }
+
+  async findByUserIdWithRelations(userId: number): Promise<any[]> {
+    return await this.prisma.sale.findMany({
+      where: { userId },
+      include: {
+        lines: {
+          include: {
+            product: true
+          }
+        },
+        store: true,
+        user: true
+      }
     });
   }
 }

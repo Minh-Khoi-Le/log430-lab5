@@ -50,8 +50,15 @@ export class SaleUseCases {
   }
 
   async getSalesByUser(userId: number): Promise<SaleResponseDTO[]> {
-    const sales = await this.saleRepository.findByUserId(userId);
-    return sales.map(sale => this.toResponseDTO(sale));
+    if (this.saleRepository.findByUserIdWithRelations) {
+      // Use method with relations for full data
+      const salesWithRelations = await this.saleRepository.findByUserIdWithRelations(userId);
+      return salesWithRelations.map(sale => this.toResponseDTOWithRelations(sale));
+    } else {
+      // Fallback to entity method
+      const sales = await this.saleRepository.findByUserId(userId);
+      return sales.map(sale => this.toResponseDTO(sale));
+    }
   }
 
   async getSalesByStore(storeId: number): Promise<SaleResponseDTO[]> {
@@ -99,6 +106,36 @@ export class SaleUseCases {
         unitPrice: line.unitPrice,
         lineTotal: line.getLineTotal()
       }))
+    };
+  }
+
+  private toResponseDTOWithRelations(saleData: any): SaleResponseDTO {
+    return {
+      id: saleData.id,
+      date: saleData.date,
+      total: saleData.total,
+      status: saleData.status,
+      storeId: saleData.storeId,
+      userId: saleData.userId,
+      lines: saleData.lines.map((line: any) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        lineTotal: line.quantity * line.unitPrice,
+        product: line.product ? {
+          id: line.product.id,
+          name: line.product.name,
+          price: line.product.price
+        } : undefined
+      })),
+      store: saleData.store ? {
+        id: saleData.store.id,
+        name: saleData.store.name
+      } : undefined,
+      user: saleData.user ? {
+        id: saleData.user.id,
+        name: saleData.user.name
+      } : undefined
     };
   }
 

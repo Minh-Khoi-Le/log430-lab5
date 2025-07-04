@@ -72,13 +72,14 @@ export const API_ENDPOINTS = {
     BY_ID: (id) => `/api/sales/${id}`,
     BY_USER: (userId) => `/api/sales/user/${userId}`,
     CREATE: "/api/sales",
-    BY_CUSTOMER: (customerId) => `/api/sales/customer/${customerId}`
+    BY_CUSTOMER: (customerId) => `/api/sales/user/${customerId}` // Fixed: use user endpoint
   },
   
   // Refund Service endpoints (via Kong)
   REFUNDS: {
     BASE: "/api/refunds",
     BY_ID: (id) => `/api/refunds/${id}`,
+    BY_USER: (userId) => `/api/refunds/user/${userId}`,
     CREATE: "/api/refunds"
   }
 };

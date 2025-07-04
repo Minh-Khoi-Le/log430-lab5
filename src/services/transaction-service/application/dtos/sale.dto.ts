@@ -15,6 +15,11 @@ export interface SaleLineDTO {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  product?: {
+    id: number;
+    name: string;
+    price: number;
+  };
 }
 
 export interface SaleResponseDTO {
@@ -25,6 +30,14 @@ export interface SaleResponseDTO {
   storeId: number;
   userId: number;
   lines: SaleLineDTO[];
+  store?: {
+    id: number;
+    name: string;
+  };
+  user?: {
+    id: number;
+    name: string;
+  };
 }
 
 export interface SalesSummaryDTO {

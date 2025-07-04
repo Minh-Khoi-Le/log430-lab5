@@ -73,8 +73,15 @@ export class RefundUseCases {
   }
 
   async getRefundsByUser(userId: number): Promise<RefundResponseDTO[]> {
-    const refunds = await this.refundRepository.findByUserId(userId);
-    return refunds.map(refund => this.toResponseDTO(refund));
+    if (this.refundRepository.findByUserIdWithRelations) {
+      // Use method with relations for full data
+      const refundsWithRelations = await this.refundRepository.findByUserIdWithRelations(userId);
+      return refundsWithRelations.map(refund => this.toResponseDTOWithRelations(refund));
+    } else {
+      // Fallback to entity method
+      const refunds = await this.refundRepository.findByUserId(userId);
+      return refunds.map(refund => this.toResponseDTO(refund));
+    }
   }
 
   async getRefundsByStore(storeId: number): Promise<RefundResponseDTO[]> {
@@ -119,6 +126,40 @@ export class RefundUseCases {
         unitPrice: line.unitPrice,
         lineTotal: line.getLineTotal()
       }))
+    };
+  }
+
+  private toResponseDTOWithRelations(refundData: any): RefundResponseDTO {
+    return {
+      id: refundData.id,
+      date: refundData.date,
+      total: refundData.total,
+      reason: refundData.reason ?? '',
+      storeId: refundData.storeId,
+      userId: refundData.userId,
+      saleId: refundData.saleId,
+      lines: refundData.lines.map((line: any) => ({
+        productId: line.productId,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice,
+        lineTotal: line.quantity * line.unitPrice,
+        product: line.product ? {
+          id: line.product.id,
+          name: line.product.name,
+          price: line.product.price
+        } : undefined
+      })),
+      store: refundData.store ? {
+        id: refundData.store.id,
+        name: refundData.store.name
+      } : undefined,
+      user: refundData.user ? {
+        id: refundData.user.id,
+        name: refundData.user.name
+      } : undefined,
+      sale: refundData.sale ? {
+        id: refundData.sale.id
+      } : undefined
     };
   }
 }

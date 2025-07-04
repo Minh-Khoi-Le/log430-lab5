@@ -10,4 +10,5 @@ export interface RefundRepository {
   findByStoreId(storeId: number): Promise<Refund[]>;
   findBySaleId(saleId: number): Promise<Refund[]>;
   findByDateRange(startDate: Date, endDate: Date): Promise<Refund[]>;
+  findByUserIdWithRelations?(userId: number): Promise<any[]>;
 }

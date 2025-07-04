@@ -9,4 +9,5 @@ export interface SaleRepository {
   findByUserId(userId: number): Promise<Sale[]>;
   findByStoreId(storeId: number): Promise<Sale[]>;
   findByDateRange(startDate: Date, endDate: Date): Promise<Sale[]>;
+  findByUserIdWithRelations?(userId: number): Promise<any[]>;
 }
