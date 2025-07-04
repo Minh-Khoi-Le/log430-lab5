@@ -20,6 +20,10 @@ import {
   CircularProgress,
   Alert,
   Grid,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -67,6 +71,206 @@ const sampleProducts = [
   }
 ];
 
+// --- ProductCreateForm component ---
+function ProductCreateForm({ onSuccess, onCancel }) {
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState('');
+  const [description, setDescription] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!name || !price) {
+      setError('Name and price are required.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const payload = { name, price: parseFloat(price), description };
+      const res = await apiFetch(API_ENDPOINTS.PRODUCTS.BASE, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res && (res.success || res.id || res.name)) {
+        onSuccess && onSuccess();
+      } else {
+        setError(res?.error || 'Failed to create product.');
+      }
+    } catch (err) {
+      setError('Failed to create product.');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 320 }}>
+        <TextField
+          label="Product Name"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          required
+        />
+        <TextField
+          label="Price"
+          type="number"
+          value={price}
+          onChange={e => setPrice(e.target.value)}
+          required
+          inputProps={{ min: 0, step: 0.01 }}
+        />
+        <TextField
+          label="Description"
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          multiline
+          rows={2}
+        />
+        {error && <Alert severity="error">{error}</Alert>}
+        <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+          <Button type="submit" variant="contained" color="primary" disabled={loading}>
+            {loading ? 'Creating...' : 'Create Product'}
+          </Button>
+          <Button onClick={onCancel} disabled={loading}>
+            Cancel
+          </Button>
+        </Box>
+      </Box>
+    </form>
+  );
+}
+
+// --- ProductEditForm component ---
+function ProductEditForm({ product, stores, onSuccess, onCancel }) {
+  const [name, setName] = useState(product?.name || '');
+  const [price, setPrice] = useState(product?.price || '');
+  const [description, setDescription] = useState(product?.description || '');
+  // Ensure all stores are represented in stocks, even if quantity is 0
+  const getAllStocks = (productStocks, stores) => {
+    return stores.map(store => {
+      const found = productStocks?.find(s => s.storeId === store.id);
+      return found ? { ...found } : { storeId: store.id, quantity: 0 };
+    });
+  };
+  const [stocks, setStocks] = useState(getAllStocks(product?.stocks || [], stores));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  // Update stocks when stores or product changes
+  useEffect(() => {
+    setStocks(getAllStocks(product?.stocks || [], stores));
+  }, [product, stores]);
+
+  // Handle stock quantity change
+  const handleStockChange = (storeId, value) => {
+    setStocks(stocks =>
+      stocks.map(s =>
+        s.storeId === storeId ? { ...s, quantity: Number(value) } : s
+      )
+    );
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!name || !price) {
+      setError('Name and price are required.');
+      return;
+    }
+    setLoading(true);
+    try {
+      // Update product fields
+      await apiFetch(API_ENDPOINTS.PRODUCTS.BY_ID(product.id), {
+        method: 'PUT',
+        body: JSON.stringify({ name, price: parseFloat(price), description }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      // Update or create stocks
+      await Promise.all(
+        stocks.map(stock => {
+          if (stock.id) {
+            // Update existing stock
+            return apiFetch(`/api/stock/${stock.id}`, {
+              method: 'PUT',
+              body: JSON.stringify({ quantity: stock.quantity }),
+              headers: { 'Content-Type': 'application/json' }
+            });
+          } else {
+            // Create new stock record for this store
+            return apiFetch('/api/stock', {
+              method: 'POST',
+              body: JSON.stringify({ productId: product.id, storeId: stock.storeId, quantity: stock.quantity }),
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        })
+      );
+      onSuccess && onSuccess();
+    } catch (err) {
+      setError('Failed to update product or stock.');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 320 }}>
+        <TextField
+          label="Product Name"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          required
+        />
+        <TextField
+          label="Price"
+          type="number"
+          value={price}
+          onChange={e => setPrice(e.target.value)}
+          required
+          inputProps={{ min: 0, step: 0.01 }}
+        />
+        <TextField
+          label="Description"
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          multiline
+          rows={2}
+        />
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="subtitle1">Stock by Store</Typography>
+          {stocks.map(stock => (
+            <Box key={stock.storeId} sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1 }}>
+              <Typography sx={{ minWidth: 120 }}>
+                {stores.find(s => s.id === stock.storeId)?.name || `Store ${stock.storeId}`}:
+              </Typography>
+              <TextField
+                type="number"
+                value={stock.quantity}
+                onChange={e => handleStockChange(stock.storeId, e.target.value)}
+                inputProps={{ min: 0, step: 1 }}
+                size="small"
+                sx={{ width: 100 }}
+              />
+            </Box>
+          ))}
+        </Box>
+        {error && <Alert severity="error">{error}</Alert>}
+        <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+          <Button type="submit" variant="contained" color="primary" disabled={loading}>
+            {loading ? 'Saving...' : 'Save Changes'}
+          </Button>
+          <Button onClick={onCancel} disabled={loading}>
+            Cancel
+          </Button>
+        </Box>
+      </Box>
+    </form>
+  );
+}
+
 function Products() {
   const { user } = useUser();
   const [products, setProducts] = useState([]);
@@ -76,6 +280,11 @@ function Products() {
   const [selectedCategory] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [productToEdit, setProductToEdit] = useState(null);
+  const [stores, setStores] = useState([]);
 
   // Define fetchProducts before useEffect hooks
   const fetchProducts = useCallback(async () => {
@@ -168,16 +377,54 @@ function Products() {
       filtered = filtered.filter(product => product.category === selectedCategory);
     }
 
+    // Always sort alphabetically by product name
+    filtered = filtered.slice().sort((a, b) => a.name.localeCompare(b.name));
+
     setFilteredProducts(filtered);
   };
 
   const handleEditProduct = (product) => {
-    console.log('Edit product:', product);
+    setProductToEdit(product);
+    setEditDialogOpen(true);
   };
 
   const handleDeleteProduct = (product) => {
-    console.log('Delete product:', product);
+    setProductToDelete(product);
+    setDeleteDialogOpen(true);
   };
+
+  const confirmDeleteProduct = async () => {
+    if (!productToDelete) return;
+    setLoading(true);
+    setError('');
+    try {
+      await apiFetch(API_ENDPOINTS.PRODUCTS.BY_ID(productToDelete.id), {
+        method: 'DELETE',
+      });
+      setDeleteDialogOpen(false);
+      setProductToDelete(null);
+      fetchProducts();
+    } catch (err) {
+      setError('Failed to delete product.');
+      setDeleteDialogOpen(false);
+      setProductToDelete(null);
+    }
+    setLoading(false);
+  };
+
+  // Fetch stores for stock editing
+  const fetchStores = useCallback(async () => {
+    try {
+      const res = await apiFetch(API_ENDPOINTS.STORES.BASE);
+      setStores(res.data || res || []);
+    } catch (e) {
+      setStores([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (editDialogOpen) fetchStores();
+  }, [editDialogOpen, fetchStores]);
 
   if (loading) {
     return (
@@ -291,13 +538,59 @@ function Products() {
           open={showAddModal}
           title="Add New Product"
           onClose={() => setShowAddModal(false)}
-          onConfirm={() => {
-            setShowAddModal(false);
+          onConfirm={async () => {
+            // No-op, handled in form
           }}
         >
-          <Typography>Product creation form would be implemented here.</Typography>
+          <ProductCreateForm
+            onSuccess={() => {
+              setShowAddModal(false);
+              fetchProducts();
+            }}
+            onCancel={() => setShowAddModal(false)}
+          />
         </Modal>
       )}
+
+      {/* Edit Product Modal */}
+      {user?.role === 'admin' && (
+        <Modal
+          open={editDialogOpen}
+          title="Edit Product"
+          onClose={() => setEditDialogOpen(false)}
+          onConfirm={null}
+        >
+          {productToEdit && (
+            <ProductEditForm
+              product={productToEdit}
+              stores={stores}
+              onSuccess={() => {
+                setEditDialogOpen(false);
+                setProductToEdit(null);
+                fetchProducts();
+              }}
+              onCancel={() => {
+                setEditDialogOpen(false);
+                setProductToEdit(null);
+              }}
+            />
+          )}
+        </Modal>
+      )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Product</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete <b>{productToDelete?.name}</b>?</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)} disabled={loading}>Cancel</Button>
+          <Button onClick={confirmDeleteProduct} color="error" variant="contained" disabled={loading}>
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 }

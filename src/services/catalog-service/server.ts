@@ -73,7 +73,7 @@ const storeRepository = new PrismaStoreRepository(prisma);
 const stockRepository = new PrismaStockRepository(prisma);
 
 // Use cases
-const productUseCases = new ProductUseCases(productRepository);
+const productUseCases = new ProductUseCases(productRepository, storeRepository, stockRepository);
 const storeUseCases = new StoreUseCases(storeRepository);
 const stockUseCases = new StockUseCases(stockRepository, productRepository, storeRepository);
 

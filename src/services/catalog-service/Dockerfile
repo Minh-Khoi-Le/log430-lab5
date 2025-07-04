@@ -44,6 +44,9 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
+# Copy prisma schema and migrations for runtime (needed for migrations and client)
+COPY --from=builder /app/prisma ./prisma
+
 # The compiled JavaScript tries to import from relative paths like ../../shared
 # But we need the shared code to be available where those imports expect it
 # Create the shared directory structure to match the import expectations
@@ -56,5 +59,5 @@ COPY services/catalog-service/start.js ./
 # Expose port
 EXPOSE 3000
 
-# Start the service
-CMD ["node", "start.js"]
+# Run migrations before starting the service
+CMD npx prisma migrate deploy --schema=./prisma/schema.prisma && node start.js

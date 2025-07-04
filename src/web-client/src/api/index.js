@@ -163,6 +163,10 @@ const handleKongError = (error, path, config) => {
  * Process Kong Gateway response
  */
 const processResponse = async (res) => {
+  if (res.status === 204) {
+    // No Content: treat as success, return null or a success object
+    return null;
+  }
   if (!res.ok) {
     let errorText;
     try {

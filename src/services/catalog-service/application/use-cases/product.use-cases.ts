@@ -1,9 +1,16 @@
 import { ProductRepository } from '../../domain/repositories/product.repository';
+import { StoreRepository } from '../../domain/repositories/store.repository';
+import { StockRepository } from '../../domain/repositories/stock.repository';
 import { CreateProductDTO, UpdateProductDTO, ProductResponseDTO } from '../dtos/product.dto';
 import { Product } from '../../domain/entities/product.entity';
+import { Stock } from '../../domain/entities/stock.entity';
 
 export class ProductUseCases {
-  constructor(private readonly productRepository: ProductRepository) {}
+  constructor(
+    private readonly productRepository: ProductRepository,
+    private readonly storeRepository: StoreRepository,
+    private readonly stockRepository: StockRepository
+  ) {}
 
   async createProduct(dto: CreateProductDTO): Promise<ProductResponseDTO> {
     const product = new Product(0, dto.name, dto.price, dto.description);
@@ -13,6 +20,15 @@ export class ProductUseCases {
     }
 
     const savedProduct = await this.productRepository.save(product);
+
+    // Create stock record for every store
+    const stores = await this.storeRepository.findAll();
+    await Promise.all(
+      stores.map(store =>
+        this.stockRepository.save(new Stock(store.id, savedProduct.id, 0))
+      )
+    );
+
     return this.toResponseDTO(savedProduct);
   }
 
@@ -52,6 +68,9 @@ export class ProductUseCases {
     if (!product) {
       throw new Error('Product not found');
     }
+    // Delete all stock records for this product before deleting the product itself
+    const stocks = await this.stockRepository.findByProductId(id);
+    await Promise.all(stocks.map(stock => this.stockRepository.delete(stock.id)));
     await this.productRepository.delete(id);
   }
 
