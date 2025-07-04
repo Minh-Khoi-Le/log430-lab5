@@ -92,7 +92,7 @@ const History = () => {
 
   // Sort items by date
   const sortedPurchases = [...purchases]
-    .filter(purchase => purchase.status !== 'REFUNDED') // Exclude fully refunded sales
+    .filter(purchase => (purchase.status || '').toLowerCase() !== 'refunded') // Exclude fully refunded sales, case-insensitive
     .sort((a, b) => {
       const dateA = new Date(a.date);
       const dateB = new Date(b.date);
@@ -198,80 +198,64 @@ const History = () => {
   };
 
   // Fetch purchase and refund history
-  const fetchHistory = useCallback(async () => {
-    if (!user?.id) return;
-    
-    console.log('=== FETCH HISTORY DEBUG ===');
-    console.log('User:', { id: user.id, role: user.role, name: user.name });
-    
-    setLoading(true);
-    setError("");
-    
+  const fetchPurchases = async (user, cacheBuster) => {
+    const purchasesResponse = await authenticatedFetch(
+      API_ENDPOINTS.SALES.BY_CUSTOMER(user.id) + cacheBuster,
+      user.token
+    );
+    let purchasesArray = [];
+    if (purchasesResponse && purchasesResponse.data) {
+      if (Array.isArray(purchasesResponse.data)) {
+        purchasesArray = purchasesResponse.data;
+      }
+    } else if (Array.isArray(purchasesResponse)) {
+      purchasesArray = purchasesResponse;
+    }
+    return purchasesArray;
+  };
+
+  const fetchRefunds = async (user, cacheBuster) => {
     try {
-      // Add cache busting parameter to ensure fresh data
-      const cacheBuster = `?_t=${Date.now()}`;
-      
-      // Fetch purchase history using the customer endpoint via Kong Gateway
-      console.log('Fetching purchases from:', API_ENDPOINTS.SALES.BY_CUSTOMER(user.id));
-      const purchasesResponse = await authenticatedFetch(
-        API_ENDPOINTS.SALES.BY_CUSTOMER(user.id) + cacheBuster,
+      const response = await authenticatedFetch(
+        API_ENDPOINTS.REFUNDS.BY_USER(user.id) + cacheBuster,
         user.token
       );
-      
-      // Handle the API response structure: { success: true, data: [...], pagination: {...} }
-      let purchasesArray = [];
-      if (purchasesResponse && purchasesResponse.data) {
-        if (Array.isArray(purchasesResponse.data)) {
-          purchasesArray = purchasesResponse.data;
+      let refundsArray = [];
+      if (response && response.data) {
+        if (Array.isArray(response.data.refunds)) {
+          refundsArray = response.data.refunds;
+        } else if (Array.isArray(response.data)) {
+          refundsArray = response.data;
         }
-      } else if (Array.isArray(purchasesResponse)) {
-        purchasesArray = purchasesResponse;
+      } else if (Array.isArray(response)) {
+        refundsArray = response;
       }
-      
-      console.log('Purchases fetched:', purchasesArray.length, 'for user:', user.id);
+      return refundsArray;
+    } catch (refundErr) {
+      if (refundErr.message.includes('401')) {
+        console.warn("Authentication failed for refunds endpoint - check token");
+      } else if (refundErr.message.includes('403')) {
+        console.warn("Access denied for refunds endpoint - check permissions");
+      } else if (refundErr.message.includes('502') || refundErr.message.includes('503')) {
+        console.warn("Transaction service may be unavailable via Kong Gateway");
+      }
+      return [];
+    }
+  };
+
+  const fetchHistory = useCallback(async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    setError("");
+    try {
+      const cacheBuster = `?_t=${Date.now()}`;
+      const [purchasesArray, refundsArray] = await Promise.all([
+        fetchPurchases(user, cacheBuster),
+        fetchRefunds(user, cacheBuster)
+      ]);
       setPurchases(purchasesArray);
-      
-      // Fetch refund history via Kong Gateway
-      try {
-        console.log('Fetching refunds from:', API_ENDPOINTS.REFUNDS.BY_USER(user.id));
-        const response = await authenticatedFetch(
-          API_ENDPOINTS.REFUNDS.BY_USER(user.id) + cacheBuster, 
-          user.token
-        );
-        
-        console.log('Refunds response:', response);
-        console.log('Response data structure:', JSON.stringify(response, null, 2));
-        
-        // Handle the API response structure: { success: true, data: [...], pagination: {...} }
-        let refundsArray = [];
-        if (response && response.data) {
-          if (Array.isArray(response.data.refunds)) {
-            refundsArray = response.data.refunds;
-          } else if (Array.isArray(response.data)) {
-            refundsArray = response.data;
-          }
-        } else if (Array.isArray(response)) {
-          refundsArray = response;
-        }
-        
-        console.log('User refunds:', refundsArray.length);
-        setRefunds(refundsArray);
-      } catch (refundErr) {
-        console.warn("Could not fetch refunds via Kong Gateway:", refundErr);
-        // For Kong Gateway errors, provide more specific feedback
-        if (refundErr.message.includes('401')) {
-          console.warn("Authentication failed for refunds endpoint - check token");
-        } else if (refundErr.message.includes('403')) {
-          console.warn("Access denied for refunds endpoint - check permissions");
-        } else if (refundErr.message.includes('502') || refundErr.message.includes('503')) {
-          console.warn("Transaction service may be unavailable via Kong Gateway");
-        }
-        setRefunds([]); // Set empty array if refunds fail to load
-      }
-      
+      setRefunds(refundsArray);
     } catch (err) {
-      console.error("Error fetching history via Kong Gateway:", err);
-      // Provide Kong Gateway specific error messages
       if (err.message.includes('401')) {
         setError("Authentication failed. Please log in again.");
       } else if (err.message.includes('403')) {
@@ -343,7 +327,7 @@ const History = () => {
               <Tab 
                 icon={<SellIcon />} 
                 iconPosition="start" 
-                label={`Purchases (${purchases.length})`} 
+                label={`Purchases (${sortedPurchases.length})`} 
               />
               <Tab 
                 icon={<UndoIcon />} 
