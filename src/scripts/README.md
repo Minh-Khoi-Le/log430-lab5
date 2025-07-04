@@ -4,9 +4,8 @@ This directory contains utility scripts for managing the LOG430 Lab 5 microservi
 
 ## Available Scripts
 
-- `quick-start.bat` - Starts all services (Redis, microservices, Kong API Gateway, web client)
-- `stop-all.bat` - Stops all services and cleans up Docker resources
-- `reset-cache.bat` - Resets the Redis cache container (useful for clearing all cached data)
+- `quick-start.bat` - Stops, builds, and starts all backend services (Postgres, Redis, microservices, Kong API Gateway, seeds DB) and automatically launches the web client locally on your machine (not in Docker)
+- `seed-database.bat` - Rebuilds the db-seed image and forcefully reseeds the database with demo data
 
 ## Usage
 
@@ -20,28 +19,28 @@ To start the entire system in one command:
 
 This will:
 
-1. Start Redis for caching
-2. Start all microservices (User, Catalog, Transaction)
-3. Start Kong API Gateway
-4. Start the web client
+1. Stop and clean up any running containers
+2. Build all Docker images
+3. Start Postgres, Redis, all microservices (User, Catalog, Transaction), and Kong API Gateway
+4. Wait for Kong to be ready
+5. Seed the database with demo data
+6. Launch the web client locally in a new terminal window using `npm run dev`
+
+### Seeding the Database
+
+To force a full reseed of the database (clears all data and reloads demo data):
+
+```batch
+.\seed-database.bat
+```
 
 ### Stopping All Services
 
 To stop all services and clean up:
 
 ```batch
-.\stop-all.bat
+docker-compose down -v
 ```
-
-### Resetting the Cache
-
-To reset the Redis cache (clear all cached data):
-
-```batch
-.\reset-cache.bat
-```
-
-This will stop and remove the existing Redis container, then start a fresh one.
 
 ## Access Points
 
@@ -55,12 +54,12 @@ After starting the system:
 
 If services fail to start:
 
-1. Try stopping all services first: `.\stop-all.bat`
+1. Try stopping all services first: `docker-compose down -v`
 2. Check Docker logs: `docker-compose logs -f [service-name]`
-3. Ensure Redis is running: `docker ps | grep redis-cache`
+3. Ensure Redis is running: `docker ps | findstr redis`
 4. Check if required ports are available (3001-3003, 5173, 6379, 8000, 8001)
 
 If experiencing cache-related issues:
 
-1. Reset the Redis cache: `.\reset-cache.bat`
+1. Restart Redis: `docker-compose restart redis`
 2. Restart the affected service(s) to reconnect to Redis: `docker-compose restart [service-name]`
