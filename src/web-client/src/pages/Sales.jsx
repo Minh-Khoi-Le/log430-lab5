@@ -1,124 +1,164 @@
-import { Container, Row, Col, Card, Table, Badge, Button } from 'react-bootstrap'
-import { useState, useEffect } from 'react'
-import { SalesService } from '../services/api'
+/**
+ * Sales Page
+ * 
+ * This page allows gestionnaire users to view and manage sales.
+ * Kong API Gateway Integration:
+ * - GET /sales -> transaction-service (requires authentication)
+ */
+
+import React, { useState, useEffect } from 'react';
+import { useUser } from '../context/UserContext';
+import { authenticatedFetch, API_ENDPOINTS } from '../api';
+import {
+  Container,
+  Box,
+  Typography,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  CircularProgress,
+  Alert,
+  Chip
+} from '@mui/material';
+import { Receipt as ReceiptIcon } from '@mui/icons-material';
 
 function Sales() {
-  const [sales, setSales] = useState([])
-  const [loading, setLoading] = useState(true)
+  const { user } = useUser();
+  const [sales, setSales] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchSales()
-  }, [])
+    if (user?.token) {
+      fetchSales();
+    }
+  }, [user]);
 
   const fetchSales = async () => {
-    try {
-      setLoading(true)
-      const userData = JSON.parse(localStorage.getItem('userData') || '{}')
-      
-      let data
-      if (userData.role === 'client') {
-        data = await SalesService.getUserSales(userData.id)
-      } else {
-        data = await SalesService.getSales()
-      }
-      
-      setSales(data)
-    } catch (error) {
-      console.error('Error fetching sales:', error)
-    } finally {
-      setLoading(false)
+    if (!user?.token) {
+      setError('Authentication required to view sales data.');
+      setLoading(false);
+      return;
     }
-  }
 
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'active':
-        return <Badge bg="success">Active</Badge>
-      case 'refunded':
-        return <Badge bg="danger">Refunded</Badge>
-      case 'partially_refunded':
-        return <Badge bg="warning">Partially Refunded</Badge>
-      default:
-        return <Badge bg="secondary">{status}</Badge>
+    try {
+      setLoading(true);
+      setError('');
+      
+      console.log('Fetching sales via Kong Gateway:', API_ENDPOINTS.SALES.BASE);
+      const response = await authenticatedFetch(API_ENDPOINTS.SALES.BASE, user.token);
+      const salesData = response.success ? response.data : response;
+      setSales(Array.isArray(salesData) ? salesData : []);
+      
+      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching sales via Kong Gateway:', err);
+      if (err.message.includes('401')) {
+        setError('Authentication failed. Please log in again.');
+      } else if (err.message.includes('403')) {
+        setError('Access denied. You need gestionnaire permissions to view sales.');
+      } else if (err.message.includes('502') || err.message.includes('503')) {
+        setError('Sales service is temporarily unavailable. Please try again later.');
+      } else {
+        setError('Failed to load sales data. Please try again.');
+      }
+      setLoading(false);
     }
-  }
+  };
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
 
   if (loading) {
     return (
-      <Container>
-        <div className="text-center">
-          <div className="spinner-border">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-        </div>
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
+          <CircularProgress size={50} />
+        </Box>
       </Container>
-    )
+    );
   }
 
   return (
-    <Container fluid>
-      <Row className="mb-4">
-        <Col>
-          <h1 className="mb-4">Sales</h1>
-        </Col>
-        <Col xs="auto">
-          <Button variant="primary">New Sale</Button>
-        </Col>
-      </Row>
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      {/* Header */}
+      <Paper elevation={1} sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <ReceiptIcon sx={{ fontSize: 28, color: 'primary.main' }} />
+          <Typography variant="h4" component="h1">
+            Sales Management
+          </Typography>
+        </Box>
+        <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
+          View and manage all sales transactions
+        </Typography>
+      </Paper>
 
-      <Row>
-        <Col>
-          <Card>
-            <Card.Body>
-              <div className="table-responsive">
-                <Table striped bordered hover>
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Date</th>
-                      <th>Store</th>
-                      <th>Customer</th>
-                      <th>Total</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sales.map(sale => (
-                      <tr key={sale.id}>
-                        <td>{sale.id}</td>
-                        <td>{new Date(sale.date).toLocaleDateString()}</td>
-                        <td>{sale.store?.name || `Store ${sale.storeId}`}</td>
-                        <td>{sale.user?.name || `User ${sale.userId}`}</td>
-                        <td>${sale.total.toFixed(2)}</td>
-                        <td>{getStatusBadge(sale.status)}</td>
-                        <td>
-                          <Button variant="outline-primary" size="sm" className="me-2">
-                            View
-                          </Button>
-                          {sale.status === 'active' && (
-                            <Button variant="outline-warning" size="sm">
-                              Refund
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </Table>
-              </div>
-              
-              {sales.length === 0 && (
-                <div className="text-center">
-                  <p>No sales found.</p>
-                </div>
+      {/* Error Alert */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+
+      {/* Sales Table */}
+      <Paper elevation={1}>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Sale ID</TableCell>
+                <TableCell>Date</TableCell>
+                <TableCell>Customer</TableCell>
+                <TableCell>Store</TableCell>
+                <TableCell align="right">Total</TableCell>
+                <TableCell>Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {sales.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} align="center">
+                    <Typography variant="body1" color="text.secondary" sx={{ py: 4 }}>
+                      No sales found
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                sales.map((sale) => (
+                  <TableRow key={sale.id}>
+                    <TableCell>#{sale.id}</TableCell>
+                    <TableCell>{formatDate(sale.date)}</TableCell>
+                    <TableCell>{sale.user?.name || 'Unknown'}</TableCell>
+                    <TableCell>{sale.store?.name || 'Unknown'}</TableCell>
+                    <TableCell align="right">${sale.total?.toFixed(2) || '0.00'}</TableCell>
+                    <TableCell>
+                      <Chip 
+                        label={sale.status || 'Active'} 
+                        color={sale.status === 'refunded' ? 'error' : 'success'}
+                        size="small"
+                      />
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
     </Container>
-  )
+  );
 }
 
-export default Sales
+export default Sales;

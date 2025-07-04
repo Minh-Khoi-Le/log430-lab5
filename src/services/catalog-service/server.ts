@@ -32,7 +32,6 @@ const PORT = process.env['PORT'] ?? 3000;
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
-app.use(createCacheMiddleware()); // Initialize cache middleware
 
 // Initialize dependencies
 const prisma = new PrismaClient();
@@ -52,7 +51,7 @@ const initializeCache = async () => {
 };
 
 // Call the initialization function
-initializeCache().catch(console.error);
+initializeCache().catch(err => logger.error('Redis initialization error', err as Error));
 
 // Create cache service with proper service name
 const cacheService = new CacheService(redisClient, 'catalog-service');

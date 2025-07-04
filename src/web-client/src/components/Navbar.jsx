@@ -31,7 +31,7 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import StoreIcon from "@mui/icons-material/Store";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 
-function Navigation() {
+function Navbar() {
   const { cart } = useLocalCart();
   const { user, setUser } = useUser();
   const [stores, setStores] = useState([]);
@@ -144,9 +144,9 @@ function Navigation() {
           
           {/* Products link - available to all users */}
           <Link
-            to="/products"
+            to="/"
             style={{
-              color: location.pathname === "/products" ? "#3a8bff" : "#fff",
+              color: location.pathname === "/" ? "#3a8bff" : "#fff",
               textDecoration: "none",
               fontWeight: 600,
               marginRight: 16,
@@ -263,4 +263,4 @@ function Navigation() {
   );
 }
 
-export default Navigation;
+export default Navbar;

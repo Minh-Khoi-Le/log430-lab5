@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Shared Database
   postgres:
@@ -61,7 +59,7 @@ services:
       context: .
       dockerfile: ./services/user-service/Dockerfile
     ports:
-      - "5001:5001"
+      - "3001:3000"
     environment:
       NODE_ENV: development
       PORT: 3000
@@ -150,20 +148,26 @@ services:
   db-seed:
     build:
       context: .
-    command: node prisma/seed.js
+      dockerfile: ./services/db-seeder/Dockerfile
+    command: ["node", "seed.js"]
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/log430_store
       NODE_ENV: development
     depends_on:
       postgres:
         condition: service_healthy
-    profiles:
-      - seed
+      db-migrate:
+        condition: service_completed_successfully
+    networks:
+      - default
 
   # Web client
   web-client:
     build:
       context: ./web-client
+      args:
+        - VITE_API_BASE_URL=http://kong:8000
+        - VITE_API_KEY=frontend-app-key-12345
     ports:
       - "5173:80"
     depends_on:

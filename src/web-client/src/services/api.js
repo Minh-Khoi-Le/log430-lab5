@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create axios instance with base configuration
 const apiClient = axios.create({
-  baseURL: '/api', // This will be proxied to Kong Gateway
+  baseURL: process.env.NODE_ENV === 'development' ? 'http://localhost:8000/api' : '/api', // Use Kong in dev
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

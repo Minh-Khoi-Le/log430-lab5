@@ -2,6 +2,21 @@ _format_version: "3.0"
 _transform: true
 
 services:
+  # Public endpoints (no auth required)
+  - name: catalog-service-public
+    url: http://catalog-service:3000
+    routes:
+      - name: stores-public
+        paths:
+          - /api/stores
+        strip_path: false
+        methods:
+          - GET
+          - OPTIONS
+    tags:
+      - microservice
+      - public
+
   # User Service
   - name: user-service
     url: http://user-service:3000
@@ -14,6 +29,10 @@ services:
         paths:
           - /api/auth
         strip_path: false
+      - name: auth-login-routes
+        paths:
+          - /api/auth/login
+        strip_path: false
     tags:
       - microservice
       - user
@@ -25,10 +44,6 @@ services:
       - name: product-routes
         paths:
           - /api/products
-        strip_path: false
-      - name: store-routes
-        paths:
-          - /api/stores
         strip_path: false
       - name: stock-routes
         paths:
@@ -59,6 +74,10 @@ plugins:
   - name: cors
     config:
       origins:
+        - "http://localhost:5173"
+        - "http://localhost:5174"
+        - "http://localhost:3000"
+        - "http://localhost:8000"
         - "*"
       methods:
         - GET
@@ -66,6 +85,8 @@ plugins:
         - PUT
         - DELETE
         - OPTIONS
+        - PATCH
+        - HEAD
       headers:
         - Accept
         - Accept-Version
@@ -75,22 +96,35 @@ plugins:
         - Date
         - X-Auth-Token
         - Authorization
+        - X-API-Key
+        - apikey
+        - Origin
+        - X-Requested-With
       exposed_headers:
         - X-Auth-Token
+        - X-API-Key
       credentials: true
       max_age: 3600
+      preflight_continue: false
 
   - name: rate-limiting
     config:
       minute: 300
       hour: 1000
-      policy: local
+      policy: redis
+      redis:
+        host: redis
+        port: 6379
+        ssl: false
+        ssl_verify: false
+        timeout: 2000
+        database: 0
 
   - name: request-size-limiting
     config:
       allowed_payload_size: 1024
 
-# Service-specific plugins
+# Service-specific plugins (Note: catalog-service-public has no auth)
   - name: key-auth
     service: catalog-service
     config:

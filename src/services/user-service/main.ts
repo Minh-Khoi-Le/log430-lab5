@@ -45,7 +45,6 @@ const userCache = createCacheMiddleware({
 app.use(cors());
 app.use(json());
 app.use(requestLogger); // Add request logging middleware
-app.use(userCache); // Add cache middleware
 
 // Health check
 app.get('/health', (req, res) => {
@@ -57,18 +56,18 @@ app.get('/health', (req, res) => {
 const userController = new UserController(cacheService);
 const authController = new AuthController(prisma);
 
-// Authentication routes under /api/users to match frontend expectations
-app.post('/api/users/login', (req, res) => {
+// Authentication routes under /api/auth to match Kong gateway expectations
+app.post('/api/auth/login', (req, res) => {
   logger.info('Login attempt', { username: req.body.name });
   authController.login(req, res);
 });
 
-app.post('/api/users/register', (req, res) => {
+app.post('/api/auth/register', (req, res) => {
   logger.info('Registration attempt', { username: req.body.name });
   authController.register(req, res);
 });
 
-app.get('/api/users/me', authenticate, userCache, (req, res) => {
+app.get('/api/auth/me', authenticate, userCache, (req, res) => {
   logger.info('User profile requested', { userId: (req as any).user?.id });
   authController.me(req, res);
 });
