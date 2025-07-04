@@ -2,6 +2,7 @@ import { SaleRepository } from '../../domain/repositories/sale.repository';
 import { CreateSaleDTO, SaleResponseDTO, SalesSummaryDTO } from '../dtos/sale.dto';
 import { Sale } from '../../domain/entities/sale.entity';
 import { SaleLine } from '../../domain/entities/sale-line.entity';
+import axios from 'axios';
 
 export class SaleUseCases {
   constructor(private readonly saleRepository: SaleRepository) {}
@@ -28,6 +29,10 @@ export class SaleUseCases {
 
     // Save sale
     const savedSale = await this.saleRepository.save(sale);
+
+    // Update stock for each product sold
+    await this.updateStockAfterSale(dto.storeId, dto.lines);
+
     return this.toResponseDTO(savedSale);
   }
 
@@ -95,5 +100,44 @@ export class SaleUseCases {
         lineTotal: line.getLineTotal()
       }))
     };
+  }
+
+  private async updateStockAfterSale(storeId: number, lines: Array<{productId: number, quantity: number}>): Promise<void> {
+    const catalogServiceUrl = process.env.CATALOG_SERVICE_URL ?? 'http://catalog-service:3000';
+    
+    try {
+      // Update stock for each product in the sale
+      for (const line of lines) {
+        const reservationData = {
+          storeId: storeId,
+          productId: line.productId,
+          quantity: line.quantity
+        };
+
+        console.log(`Updating stock for product ${line.productId}, quantity: ${line.quantity}`);
+        
+        const response = await axios.post(`${catalogServiceUrl}/api/stock/reserve`, reservationData, {
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          timeout: 5000 // 5 second timeout
+        });
+
+        if (!response.data.success) {
+          console.error(`Failed to update stock for product ${line.productId}`);
+          // Note: In a production system, you might want to implement compensation logic
+          // or use a saga pattern to handle partial failures
+        } else {
+          console.log(`Successfully updated stock for product ${line.productId}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating stock after sale:', error);
+      // In a production system, you might want to:
+      // 1. Log this error for monitoring
+      // 2. Implement retry logic
+      // 3. Use a message queue for reliable stock updates
+      // For now, we'll just log the error and continue
+    }
   }
 }

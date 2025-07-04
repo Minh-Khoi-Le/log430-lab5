@@ -1,7 +1,7 @@
 /**
  * Sales Page
  * 
- * This page allows gestionnaire users to view and manage sales.
+ * This page allows admin users to view and manage sales.
  * Kong API Gateway Integration:
  * - GET /sales -> transaction-service (requires authentication)
  */
@@ -60,7 +60,7 @@ function Sales() {
       if (err.message.includes('401')) {
         setError('Authentication failed. Please log in again.');
       } else if (err.message.includes('403')) {
-        setError('Access denied. You need gestionnaire permissions to view sales.');
+        setError('Access denied. You need admin permissions to view sales.');
       } else if (err.message.includes('502') || err.message.includes('503')) {
         setError('Sales service is temporarily unavailable. Please try again later.');
       } else {

@@ -8,7 +8,7 @@
  */
 
 import React from "react";
-import { useLocalCart } from "../hooks/useLocalCart";
+import { useCart } from "../context/CartContext";
 import { useUser } from "../context/UserContext";
 import {
   Card,
@@ -29,7 +29,7 @@ import StorefrontIcon from "@mui/icons-material/Storefront";
 const ProductCard = ({ product, onEdit, onDelete }) => {
   // State for hover effects
   const [hover, setHover] = React.useState(false);
-  const { addToCart } = useLocalCart();
+  const { addToCart } = useCart();
   const { user } = useUser();
   
   // Calculate total stock across all stores (for manager)
@@ -43,8 +43,8 @@ const ProductCard = ({ product, onEdit, onDelete }) => {
     : 0;
     
   // Determine which stock value to display based on user role
-  const displayStock = user?.role === "gestionnaire" ? totalStock : currentStoreStock;
-  const stockLabel = user?.role === "gestionnaire" ? "Total stock" : "Available stock";
+  const displayStock = user?.role === "admin" ? totalStock : currentStoreStock;
+  const stockLabel = user?.role === "admin" ? "Total stock" : "Available stock";
 
   // Check if user is a client for conditional rendering
   const isClient = user?.role === "client";

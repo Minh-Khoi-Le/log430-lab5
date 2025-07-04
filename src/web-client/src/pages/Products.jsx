@@ -4,7 +4,7 @@
  * Clean, academic-focused product catalog with clear data presentation
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useUser } from '../context/UserContext';
 import { apiFetch, API_ENDPOINTS } from '../api';
 import ProductList from '../components/ProductList';
@@ -20,9 +20,6 @@ import {
   CircularProgress,
   Alert,
   Grid,
-  Chip,
-  Card,
-  CardContent,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -30,38 +27,90 @@ import {
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 
+// Sample products data as fallback
+const sampleProducts = [
+  {
+    id: 1,
+    name: "Wireless Bluetooth Headphones",
+    price: 149.99,
+    description: "Premium noise-cancelling wireless headphones with 30-hour battery life",
+    category: "Electronics",
+    stocks: [
+      { storeId: 1, quantity: 0 },
+      { storeId: 2, quantity: 5 },
+      { storeId: 3, quantity: 3 }
+    ]
+  },
+  {
+    id: 2,
+    name: "Smart Fitness Watch",
+    price: 249.99,
+    description: "Advanced fitness tracker with heart rate monitoring and GPS",
+    category: "Electronics",
+    stocks: [
+      { storeId: 1, quantity: 0 },
+      { storeId: 2, quantity: 2 },
+      { storeId: 3, quantity: 7 }
+    ]
+  },
+  {
+    id: 3,
+    name: "Coffee Maker",
+    price: 89.99,
+    description: "Programmable coffee maker with thermal carafe",
+    category: "Home",
+    stocks: [
+      { storeId: 1, quantity: 12 },
+      { storeId: 2, quantity: 8 },
+      { storeId: 3, quantity: 0 }
+    ]
+  }
+];
+
 function Products() {
   const { user } = useUser();
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCategory] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [error, setError] = useState('');
 
-
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  useEffect(() => {
-    filterProducts();
-  }, [products, searchTerm, selectedCategory]);
-
-  const fetchProducts = async () => {
+  // Define fetchProducts before useEffect hooks
+  const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
       
-      // Try to fetch products from API, fallback to sample data
+      // Fetch both products and stock data in parallel
       try {
-        const response = await apiFetch(API_ENDPOINTS.PRODUCTS.BASE);
-        const productsData = response.success ? response.data : response;
+        const [productsResponse, stockResponse] = await Promise.all([
+          apiFetch(API_ENDPOINTS.PRODUCTS.BASE),
+          apiFetch(API_ENDPOINTS.STOCK.BASE)
+        ]);
+        
+        const productsData = productsResponse.success ? productsResponse.data : productsResponse;
         const products = productsData.products || productsData;
         
+        const stockData = stockResponse.success ? stockResponse.data : stockResponse;
+        const inventory = stockData.inventory || stockData;
+        
         if (Array.isArray(products) && products.length > 0) {
-          setProducts(products);
+          // Merge stock data with products
+          const productsWithStock = products.map(product => {
+            // Find all stock entries for this product across all stores
+            const productStocks = Array.isArray(inventory) 
+              ? inventory.filter(stock => stock.productId === product.id)
+              : [];
+            
+            return {
+              ...product,
+              stocks: productStocks
+            };
+          });
+          
+          setProducts(productsWithStock);
         } else {
           // Fallback to sample data if no products from API
           setProducts(sampleProducts);
@@ -80,7 +129,30 @@ function Products() {
       setProducts(sampleProducts); // Fallback to sample data
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
+
+  useEffect(() => {
+    filterProducts();
+  }, [products, searchTerm, selectedCategory]);
+
+  // Listen for stock updates from cart purchases
+  useEffect(() => {
+    const handleStockUpdate = (event) => {
+      console.log('Stock update event received:', event.detail);
+      // Refetch products to get updated stock information
+      fetchProducts();
+    };
+
+    window.addEventListener('stockUpdated', handleStockUpdate);
+    
+    return () => {
+      window.removeEventListener('stockUpdated', handleStockUpdate);
+    };
+  }, [fetchProducts]);
 
   const filterProducts = () => {
     let filtered = products;
@@ -141,7 +213,7 @@ function Products() {
             >
               {loading ? "Refreshing..." : "Refresh"}
             </Button>
-            {user?.role === 'gestionnaire' && (
+            {user?.role === 'admin' && (
               <Button
                 variant="contained"
                 size="small"
@@ -205,8 +277,8 @@ function Products() {
             {/* Product List */}
             <ProductList
               products={filteredProducts}
-              onEdit={handleEditProduct}
-              onDelete={handleDeleteProduct}
+              onEdit={user?.role === 'admin' ? handleEditProduct : undefined}
+              onDelete={user?.role === 'admin' ? handleDeleteProduct : undefined}
               userRole={user?.role}
             />
           </>
@@ -214,16 +286,18 @@ function Products() {
       </div>
 
       {/* Add Product Modal */}
-      <Modal
-        open={showAddModal}
-        title="Add New Product"
-        onClose={() => setShowAddModal(false)}
-        onConfirm={() => {
-          setShowAddModal(false);
-        }}
-      >
-        <Typography>Product creation form would be implemented here.</Typography>
-      </Modal>
+      {user?.role === 'admin' && (
+        <Modal
+          open={showAddModal}
+          title="Add New Product"
+          onClose={() => setShowAddModal(false)}
+          onConfirm={() => {
+            setShowAddModal(false);
+          }}
+        >
+          <Typography>Product creation form would be implemented here.</Typography>
+        </Modal>
+      )}
     </div>
   );
 }

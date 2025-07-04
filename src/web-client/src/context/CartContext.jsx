@@ -1,15 +1,10 @@
-/**
- * Local Cart Hook
- * 
- * Simple local state management for shopping cart functionality
- * Replaces the cart service with localStorage-backed React state
- */
+import React, { createContext, useContext, useState, useEffect } from "react";
 
-import { useState, useEffect } from "react";
+const CartContext = createContext();
 
 const CART_STORAGE_KEY = "shopping_cart";
 
-export function useLocalCart() {
+export function CartProvider({ children }) {
   const [cart, setCart] = useState([]);
 
   // Load cart from localStorage on mount
@@ -33,10 +28,6 @@ export function useLocalCart() {
     }
   }, [cart]);
 
-  /**
-   * Add a product to the cart
-   * @param {Object} product - Product to add to cart 
-   */
   const addToCart = (product) => {
     setCart((prevCart) => {
       const existingItem = prevCart.find((item) => item.product.id === product.id);
@@ -52,10 +43,6 @@ export function useLocalCart() {
     });
   };
 
-  /**
-   * Remove a product from the cart (decrease quantity by 1)
-   * @param {number} productId - ID of the product to remove
-   */
   const removeFromCart = (productId) => {
     setCart((prevCart) =>
       prevCart
@@ -68,34 +55,19 @@ export function useLocalCart() {
     );
   };
 
-  /**
-   * Clear the entire cart
-   */
-  const clearCart = () => {
-    setCart([]);
-  };
+  const clearCart = () => setCart([]);
 
-  /**
-   * Get the total number of items in cart
-   */
-  const getCartItemCount = () => {
-    return cart.reduce((total, item) => total + item.quantity, 0);
-  };
+  return (
+    <CartContext.Provider value={{ cart, setCart, addToCart, removeFromCart, clearCart }}>
+      {children}
+    </CartContext.Provider>
+  );
+}
 
-  /**
-   * Get the total price of all items in cart
-   */
-  const getCartTotal = () => {
-    return cart.reduce((total, item) => total + (item.product.price * item.quantity), 0);
-  };
-
-  return {
-    cart,
-    addToCart,
-    removeFromCart,
-    clearCart,
-    getCartItemCount,
-    getCartTotal,
-    setCart
-  };
+export function useCart() {
+  const context = useContext(CartContext);
+  if (!context) {
+    throw new Error("useCart must be used within a CartProvider");
+  }
+  return context;
 }

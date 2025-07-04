@@ -8,12 +8,16 @@ import './index.css'
 import App from './App.jsx'
 // Import context providers for global state management
 import { UserProvider } from "./context/UserContext";
+import { CartProvider } from "./context/CartContext";
 
 // Render the application with context providers
 // UserProvider - Manages user authentication state
+// CartProvider - Manages shopping cart state
 createRoot(document.getElementById('root')).render(
   
     <UserProvider>
-      <App />
+      <CartProvider>
+        <App />
+      </CartProvider>
     </UserProvider>
 )

@@ -45,8 +45,8 @@ function MainApp() {
         <Route path="/" element={<Navigate to="/products" replace />} />
         <Route path="/products" element={<Products />} />
         
-        {/* Routes for gestionnaire (manager) role only */}
-        {user.role === "gestionnaire" && (
+        {/* Routes for admin role only */}
+        {user.role === "admin" && (
           <>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/stores" element={<Stores />} />

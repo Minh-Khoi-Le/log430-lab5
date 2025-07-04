@@ -18,7 +18,7 @@ const prisma = new PrismaClient();
 const users = [
   {
     name: "admin",
-    role: "gestionnaire",
+    role: "admin",
     password: "admin123" // In production, this should be hashed
   },
   {

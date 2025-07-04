@@ -1,7 +1,7 @@
 /**
  * Dashboard Page for Admin Users
  * 
- * This page provides an overview dashboard for gestionnaire (admin) users
+ * This page provides an overview dashboard for admin users
  * with system statistics and management tools.
  * Kong API Gateway Integration:
  * - GET /dashboard/stats -> catalog-service (requires authentication)
@@ -74,7 +74,7 @@ function Dashboard() {
           setError('Authentication failed. Please log in again.');
           return;
         } else if (apiError.message.includes('403')) {
-          setError('Access denied. You need gestionnaire permissions to view dashboard.');
+          setError('Access denied. You need admin permissions to view dashboard.');
           return;
         }
         // Use sample data as fallback for other errors

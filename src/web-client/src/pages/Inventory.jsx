@@ -1,7 +1,7 @@
 /**
  * Inventory Page
  * 
- * This page allows gestionnaire users to view and manage inventory across all stores.
+ * This page allows admin users to view and manage inventory across all stores.
  * Kong API Gateway Integration:
  * - GET /products -> catalog-service (requires authentication)
  * - GET /stock/product/{id} -> catalog-service (requires authentication)
@@ -87,7 +87,7 @@ function Inventory() {
       if (err.message.includes('401')) {
         setError('Authentication failed. Please log in again.');
       } else if (err.message.includes('403')) {
-        setError('Access denied. You need gestionnaire permissions to view inventory.');
+        setError('Access denied. You need admin permissions to view inventory.');
       } else if (err.message.includes('502') || err.message.includes('503')) {
         setError('Inventory service is temporarily unavailable. Please try again later.');
       } else {

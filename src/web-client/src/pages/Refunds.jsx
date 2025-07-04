@@ -1,7 +1,7 @@
 /**
  * Refunds Page
  * 
- * This page allows gestionnaire users to view and manage refunds.
+ * This page allows admin users to view and manage refunds.
  * Kong API Gateway Integration:
  * - GET /refunds -> transaction-service (requires authentication)
  */
@@ -61,7 +61,7 @@ function Refunds() {
       if (err.message.includes('401')) {
         setError('Authentication failed. Please log in again.');
       } else if (err.message.includes('403')) {
-        setError('Access denied. You need gestionnaire permissions to view refunds.');
+        setError('Access denied. You need admin permissions to view refunds.');
       } else if (err.message.includes('502') || err.message.includes('503')) {
         setError('Refunds service is temporarily unavailable. Please try again later.');
       } else {

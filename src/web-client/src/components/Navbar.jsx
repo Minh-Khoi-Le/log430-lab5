@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useLocalCart } from "../hooks/useLocalCart";
+import { useCart } from "../context/CartContext";
 import { useUser } from "../context/UserContext";
 import { apiFetch, API_ENDPOINTS } from "../api";
 import {
@@ -32,7 +32,7 @@ import StoreIcon from "@mui/icons-material/Store";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
 
 function Navbar() {
-  const { cart } = useLocalCart();
+  const { cart } = useCart();
   const { user, setUser } = useUser();
   const [stores, setStores] = useState([]);
   // Calculate total items in cart for badge display
@@ -156,8 +156,8 @@ function Navbar() {
             Product
           </Link>
           
-          {/* Dashboard link - only for gestionnaire role */}
-          {user?.role === "gestionnaire" && (
+          {/* Dashboard link - only for admin role */}
+          {user?.role === "admin" && (
             <Link to="/dashboard" style={{
               color: "#fff",
               marginRight: 16,
@@ -179,7 +179,7 @@ function Navbar() {
               textDecoration: "none",
               fontWeight: 500
             }}>
-              <Badge badgeContent={totalItems} color="primary" sx={{ marginRight: 1 }}>
+              <Badge badgeContent={totalItems} color="primary" sx={{ marginRight: 1 }} showZero>
                 <ShoppingCartIcon sx={{ color: "#fff" }} />
               </Badge>
               My Cart

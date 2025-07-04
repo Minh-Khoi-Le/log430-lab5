@@ -7,13 +7,14 @@
  */
 
 import React, { useState } from "react";
-import { useLocalCart } from "../hooks/useLocalCart";
+import { useCart } from "../context/CartContext";
 import { useUser } from "../context/UserContext";
 import { apiFetch, API_ENDPOINTS } from "../api";
 import Modal from "../components/Modal";
 
 const CartPage = () => {
-  const { cart, removeFromCart, clearCart } = useLocalCart();
+  const { cart: rawCart, removeFromCart, clearCart } = useCart();
+  const cart = Array.isArray(rawCart) ? rawCart : [];
   const { user } = useUser();
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -37,49 +38,46 @@ const CartPage = () => {
       const data = await apiFetch(API_ENDPOINTS.SALES.CREATE, {
         method: "POST",
         body: JSON.stringify({
-          clientName: user.name,
-          storeId: user.storeId, 
-          cart: cart.map(item => ({
+          userId: user.id,
+          storeId: user.storeId,
+          lines: cart.map(item => ({
             productId: item.product.id,
             quantity: item.quantity,
-            price: item.product.price
+            unitPrice: item.product.price
           }))
         })
       });
       
       setLoading(false);
 
-      // Handle API response
-      if (data.success) {
-        // Save receipt data and show the receipt modal
-        setReceiptData({
-          date: new Date().toLocaleString(),
-          items: [...cart],
-          total: total,
-          saleId: data.sale?.id || data.data?.id
-        });
-        setShowReceipt(true);
-        clearCart();
-        setErrorMsg("");
+      // Handle API response - if we get here without an error, the sale was successful
+      // Save receipt data and show the receipt modal
+      setReceiptData({
+        date: new Date().toLocaleString(),
+        items: [...cart],
+        total: total,
+        saleId: data.id || data.sale?.id || data.data?.id || 'N/A',
+        storeName: user.storeName,
+        userName: user.name
+      });
+      setShowReceipt(true);
+      clearCart();
+      setErrorMsg("");
+      
+      // Trigger a page refresh to update product stock information
+      // This ensures that the Products page will show updated stock levels
+      setTimeout(() => {
+        console.log('Dispatching stockUpdated event...');
+        const productIds = cart.map(item => item.product.id);
+        console.log('Products affected by sale:', productIds);
         
-        // Trigger a page refresh to update product stock information
-        // This ensures that the Products page will show updated stock levels
-        setTimeout(() => {
-          console.log('Dispatching stockUpdated event...');
-          const productIds = cart.map(item => item.product.id);
-          console.log('Products affected by sale:', productIds);
-          
-          // Dispatch a custom event that the Products page can listen to
-          window.dispatchEvent(new CustomEvent('stockUpdated', { 
-            detail: { productIds }
-          }));
-          
-          console.log('stockUpdated event dispatched successfully');
-        }, 1000); // Small delay to ensure the sale is processed
-      } else if (data.error || data.message) {
-        // Handle structured error responses
-        setErrorMsg(data.message || data.error);
-      }
+        // Dispatch a custom event that the Products page can listen to
+        window.dispatchEvent(new CustomEvent('stockUpdated', { 
+          detail: { productIds }
+        }));
+        
+        console.log('stockUpdated event dispatched successfully');
+      }, 1000); // Small delay to ensure the sale is processed
     } catch (err) {
       console.error("Error confirming purchase:", err);
       
@@ -108,7 +106,7 @@ const CartPage = () => {
   };
 
   /**
-   * Close receipt modal and redirect to home
+   * Close receipt modal and redirect to main product page
    */
   const handleCloseReceipt = () => {
     setShowReceipt(false);
@@ -265,10 +263,12 @@ const CartPage = () => {
             <div style={{ marginBottom: 10 }}>
               <strong>Sale ID:</strong> {receiptData.saleId}
             </div>
-            <div style={{ marginBottom: 20 }}>
-              <strong>Store:</strong> {user.storeName}
+            <div style={{ marginBottom: 10 }}>
+              <strong>Customer:</strong> {receiptData.userName}
             </div>
-            
+            <div style={{ marginBottom: 20 }}>
+              <strong>Store:</strong> {receiptData.storeName}
+            </div>
             <h3 style={{ borderBottom: "1px solid #ddd", paddingBottom: 5 }}>Items:</h3>
             <ul style={{ listStyle: "none", padding: 0 }}>
               {receiptData.items.map((item) => (
@@ -282,7 +282,6 @@ const CartPage = () => {
                 </li>
               ))}
             </ul>
-            
             <div style={{ 
               borderTop: "1px solid #ddd", 
               marginTop: 10, 
@@ -295,7 +294,6 @@ const CartPage = () => {
               <span>Total:</span>
               <span>${receiptData.total.toFixed(2)}</span>
             </div>
-            
             <button
               style={{
                 margin: "20px auto 0 auto",

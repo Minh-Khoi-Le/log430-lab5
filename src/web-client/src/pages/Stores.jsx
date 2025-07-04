@@ -1,7 +1,7 @@
 /**
  * Stores Page
  * 
- * This page allows gestionnaire users to view and manage stores.
+ * This page allows admin users to view and manage stores.
  */
 
 import React, { useState, useEffect } from 'react';

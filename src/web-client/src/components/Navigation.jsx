@@ -156,8 +156,8 @@ function Navigation() {
             Product
           </Link>
           
-          {/* Dashboard link - only for gestionnaire role */}
-          {user?.role === "gestionnaire" && (
+          {/* Dashboard link - only for admin role */}
+          {user?.role === "admin" && (
             <Link to="/dashboard" style={{
               color: "#fff",
               marginRight: 16,
