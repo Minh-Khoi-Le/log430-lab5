@@ -35,16 +35,6 @@ function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Sample dashboard data
-  const sampleStats = {
-    totalStores: 3,
-    totalProducts: 12,
-    totalSales: 45,
-    totalRevenue: 15420.50,
-    lowStockItems: 5,
-    pendingRefunds: 2
-  };
-
   useEffect(() => {
     if (user?.token) {
       fetchDashboardData();
@@ -62,12 +52,140 @@ function Dashboard() {
       setLoading(true);
       setError('');
       
-      // Try to fetch dashboard data from API, fallback to sample data
+  // Try to fetch dashboard data from API, fallback to sample data
       try {
-        console.log('Fetching dashboard data via Kong Gateway:', API_ENDPOINTS.DASHBOARD.STATS);
-        const response = await authenticatedFetch(API_ENDPOINTS.DASHBOARD.STATS, user.token);
-        const dashboardData = response.success ? response.data : response;
-        setStats(dashboardData || sampleStats);
+        console.log('Fetching dashboard data via Kong Gateway...');
+        
+        // Fetch actual data from multiple endpoints
+        const [salesResponse, storesResponse, productsResponse, stockResponse, refundsResponse] = await Promise.all([
+          authenticatedFetch(API_ENDPOINTS.SALES.BASE, user.token).catch(err => {
+            console.warn('Sales API error:', err);
+            return { data: [] };
+          }),
+          authenticatedFetch(API_ENDPOINTS.STORES.BASE, user.token).catch(err => {
+            console.warn('Stores API error:', err);
+            return { data: [] };
+          }),
+          authenticatedFetch(API_ENDPOINTS.PRODUCTS.BASE, user.token).catch(err => {
+            console.warn('Products API error:', err);
+            return { data: [] };
+          }),
+          authenticatedFetch(API_ENDPOINTS.STOCK.BASE, user.token).catch(err => {
+            console.warn('Stock API error:', err);
+            return { data: [] };
+          }),
+          authenticatedFetch(API_ENDPOINTS.REFUNDS.BASE, user.token).catch(err => {
+            console.warn('Refunds API error:', err);
+            return { data: [] };
+          })
+        ]);
+        
+        // Extract data arrays with better error handling
+        let salesData = [];
+        if (Array.isArray(salesResponse?.data)) {
+          salesData = salesResponse.data;
+        } else if (Array.isArray(salesResponse)) {
+          salesData = salesResponse;
+        }
+        
+        let storesData = [];
+        if (Array.isArray(storesResponse?.data)) {
+          storesData = storesResponse.data;
+        } else if (Array.isArray(storesResponse)) {
+          storesData = storesResponse;
+        }
+        
+        const productsData = productsResponse?.data?.products || productsResponse?.products || 
+                            (Array.isArray(productsResponse?.data) ? productsResponse.data : []) ||
+                            (Array.isArray(productsResponse) ? productsResponse : []);
+        const stockData = stockResponse?.data?.inventory || stockResponse?.inventory || 
+                         (Array.isArray(stockResponse?.data) ? stockResponse.data : []) ||
+                         (Array.isArray(stockResponse) ? stockResponse : []);
+        
+        console.log('Fetched data:', { salesData: salesData.length, storesData: storesData.length, productsData: productsData.length, stockData: stockData.length });
+        
+        // Calculate dashboard stats from real data
+        const totalStores = storesData.length;
+        const totalProducts = productsData.length;
+        const totalSales = salesData.length;
+        const totalRevenue = salesData.reduce((sum, sale) => sum + (sale.total || sale.totalAmount || 0), 0);
+        
+        // Calculate refunds data from real data
+        const refundsData = refundsResponse?.data || refundsResponse || [];
+        const pendingRefunds = refundsData.filter(refund => refund.status === 'pending').length;
+        const totalRefunds = refundsData.length;
+        const totalRefundAmount = refundsData.reduce((sum, refund) => sum + (refund.total || refund.refundAmount || 0), 0);
+        
+        // Create store map for aggregation
+        const storeMap = {};
+        storesData.forEach(store => {
+          storeMap[store.id] = store.name;
+        });
+        
+        // Aggregate sales by store
+        const storeStats = {};
+        salesData.forEach(sale => {
+          const storeId = sale.storeId;
+          if (!storeStats[storeId]) {
+            storeStats[storeId] = {
+              storeId,
+              storeName: storeMap[storeId] || `Store ${storeId}`,
+              totalSales: 0,
+              revenue: 0,
+              totalRefunds: 0,
+              refundAmount: 0,
+              netRevenue: 0
+            };
+          }
+          storeStats[storeId].totalSales += 1;
+          storeStats[storeId].revenue += sale.total || sale.totalAmount || 0;
+        });
+
+        // Aggregate refunds by store
+        refundsData.forEach(refund => {
+          const storeId = refund.storeId || (refund.sale && refund.sale.storeId);
+          if (storeId && storeStats[storeId]) {
+            storeStats[storeId].totalRefunds += 1;
+            storeStats[storeId].refundAmount += refund.total || refund.refundAmount || 0;
+          }
+        });
+
+        // Calculate net revenue for each store
+        Object.values(storeStats).forEach(store => {
+          store.netRevenue = store.revenue - store.refundAmount;
+        });
+        
+        // Add stores with no sales
+        storesData.forEach(store => {
+          if (!storeStats[store.id]) {
+            storeStats[store.id] = {
+              storeId: store.id,
+              storeName: store.name,
+              totalSales: 0,
+              revenue: 0,
+              totalRefunds: 0,
+              refundAmount: 0,
+              netRevenue: 0
+            };
+          }
+        });
+        
+        const salesByStore = Object.values(storeStats);
+        
+        const realDashboardData = {
+          totalStores,
+          totalProducts,
+          totalSales,
+          totalRevenue,
+          pendingRefunds,
+          totalRefunds,
+          totalRefundAmount,
+          salesByStore
+        };
+        
+        console.log('Real dashboard data:', realDashboardData);
+        setStats(realDashboardData);
+        
       } catch (apiError) {
         console.error('Kong Gateway API Error, using sample data:', apiError);
         if (apiError.message.includes('401')) {
@@ -78,7 +196,10 @@ function Dashboard() {
           return;
         }
         // Use sample data as fallback for other errors
-        setStats(sampleStats);
+        setStats({
+          ...sampleStats,
+          salesByStore: sampleStats.salesByStore
+        });
       }
       
       setLoading(false);
@@ -102,14 +223,20 @@ function Dashboard() {
   }
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: "#f6f6f6",
-      fontFamily: "sans-serif",
-      position: "relative"
-    }}>
-      {/* Header */}
-      <Paper elevation={1} sx={{ mx: 4, mt: 4, p: 2 }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        width: '100vw',
+        overflowX: 'hidden',
+        background: "#f6f6f6",
+        fontFamily: "sans-serif",
+        position: "relative",
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+      }}
+    >
+      <Paper elevation={1} sx={{ mx: 4, mt: 4, p: 2, width: '100%', maxWidth: 1200 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <DashboardIcon sx={{ fontSize: 28, color: 'primary.main' }} />
           <Box>
@@ -122,12 +249,14 @@ function Dashboard() {
           </Box>
         </Box>
       </Paper>
-
       {/* Main content */}
       <div style={{
         margin: "20px 28px 0 28px",
         padding: "20px 0",
-        minHeight: "60vh"
+        minHeight: "60vh",
+        width: '100%',
+        maxWidth: 1200,
+        boxSizing: 'border-box',
       }}>
 
       {/* Error Alert */}
@@ -215,55 +344,90 @@ function Dashboard() {
           </Card>
         </Grid>
 
-        {/* Low Stock Items */}
+        {/* Total Refunds */}
         <Grid item xs={12} sm={6} md={4}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
                   <Typography color="textSecondary" gutterBottom>
-                    Low Stock Items
+                    Total Refunds
                   </Typography>
                   <Typography variant="h4" fontWeight="600" color="error.main">
-                    {stats?.lowStockItems || 0}
+                    {stats?.totalRefunds || 0}
                   </Typography>
                 </Box>
-                <InventoryIcon sx={{ fontSize: 40, color: 'error.main' }} />
+                <ReportsIcon sx={{ fontSize: 40, color: 'error.main' }} />
               </Box>
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Pending Refunds */}
+        {/* Net Revenue */}
         <Grid item xs={12} sm={6} md={4}>
           <Card>
             <CardContent>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
                   <Typography color="textSecondary" gutterBottom>
-                    Pending Refunds
+                    Net Revenue
                   </Typography>
-                  <Typography variant="h4" fontWeight="600" color="warning.main">
-                    {stats?.pendingRefunds || 0}
+                  <Typography variant="h4" fontWeight="600" color="success.main">
+                    ${((stats?.totalRevenue || 0) - (stats?.totalRefundAmount || 0)).toFixed(2)}
                   </Typography>
                 </Box>
-                <ReportsIcon sx={{ fontSize: 40, color: 'warning.main' }} />
+                <SalesIcon sx={{ fontSize: 40, color: 'success.main' }} />
               </Box>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-        {/* Quick Actions */}
-        <Paper elevation={1} sx={{ p: 3, mt: 3 }}>
+      {/* Sales by Store Table */}
+      {stats?.salesByStore && Array.isArray(stats.salesByStore) && stats.salesByStore.length > 0 && (
+        <Paper elevation={1} sx={{ p: 3, mt: 4 }}>
           <Typography variant="h6" gutterBottom>
-            Quick Actions
+            Sales by Store
           </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Use the navigation menu above to access different management sections:
-            Dashboard, Stores, Inventory, Sales, and Refunds.
-          </Typography>
+          <Box sx={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+              <thead>
+                <tr style={{ background: '#f6f6f6' }}>
+                  <th style={{ padding: '10px 8px', borderBottom: '2px solid #e0e0e0', textAlign: 'left' }}>Store</th>
+                  <th style={{ padding: '10px 8px', borderBottom: '2px solid #e0e0e0', textAlign: 'right' }}>Total Sales</th>
+                  <th style={{ padding: '10px 8px', borderBottom: '2px solid #e0e0e0', textAlign: 'right' }}>Revenue</th>
+                  <th style={{ padding: '10px 8px', borderBottom: '2px solid #e0e0e0', textAlign: 'right' }}>Refunds</th>
+                  <th style={{ padding: '10px 8px', borderBottom: '2px solid #e0e0e0', textAlign: 'right' }}>Refund Amount</th>
+                  <th style={{ padding: '10px 8px', borderBottom: '2px solid #e0e0e0', textAlign: 'right' }}>Net Revenue</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.salesByStore.map((store) => (
+                  <tr key={store.storeId}>
+                    <td style={{ padding: '8px', borderBottom: '1px solid #eee' }}>{store.storeName}</td>
+                    <td style={{ padding: '8px', borderBottom: '1px solid #eee', textAlign: 'right' }}>{store.totalSales || 0}</td>
+                    <td style={{ padding: '8px', borderBottom: '1px solid #eee', textAlign: 'right' }}>${(store.revenue || 0).toFixed(2)}</td>
+                    <td style={{ padding: '8px', borderBottom: '1px solid #eee', textAlign: 'right' }}>{store.totalRefunds || 0}</td>
+                    <td style={{ padding: '8px', borderBottom: '1px solid #eee', textAlign: 'right' }}>${(store.refundAmount || 0).toFixed(2)}</td>
+                    <td style={{ padding: '8px', borderBottom: '1px solid #eee', textAlign: 'right', fontWeight: 'bold' }}>${(store.netRevenue || 0).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Box>
         </Paper>
+      )}
+
+      {/* Quick Actions */}
+      <Paper elevation={1} sx={{ p: 3, mt: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Quick Actions
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Use the navigation menu above to access different management sections:
+          Dashboard, Stores, Inventory, Sales, and Refunds.
+        </Typography>
+      </Paper>
       </div>
     </div>
   );

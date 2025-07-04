@@ -81,6 +81,11 @@ export const API_ENDPOINTS = {
     BY_ID: (id) => `/api/refunds/${id}`,
     BY_USER: (userId) => `/api/refunds/user/${userId}`,
     CREATE: "/api/refunds"
+  },
+
+  // Dashboard Service endpoints (via Kong)
+  DASHBOARD: {
+    STATS: "/api/dashboard/stats"
   }
 };
 

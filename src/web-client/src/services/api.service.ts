@@ -144,15 +144,6 @@ export const updateStock = async (id: string, stockData: any) => {
   }
 };
 
-export const getLowStockItems = async () => {
-  try {
-    const response = await apiClient.get('/api/stock/low');
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching low stock items:', error);
-    throw error;
-  }
-};
 
 // User API calls
 export const getUsers = async () => {
@@ -334,7 +325,6 @@ export default {
   getStockByStore,
   getStockByProduct,
   updateStock,
-  getLowStockItems,
   // User methods
   getUsers,
   createUser,

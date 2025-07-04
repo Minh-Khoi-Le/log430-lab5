@@ -31,6 +31,7 @@ catalog-service/
 ## API Endpoints
 
 ### Products
+
 - `GET /api/products` - Get all products
 - `GET /api/products/:id` - Get product by ID
 - `GET /api/products/search?name=<query>` - Search products by name
@@ -39,6 +40,7 @@ catalog-service/
 - `DELETE /api/products/:id` - Delete product
 
 ### Stores
+
 - `GET /api/stores` - Get all stores
 - `GET /api/stores/:id` - Get store by ID
 - `GET /api/stores/search?name=<query>` - Search stores by name
@@ -47,11 +49,11 @@ catalog-service/
 - `DELETE /api/stores/:id` - Delete store
 
 ### Stock
+
 - `GET /api/stock` - Get all stock records
 - `GET /api/stock/:id` - Get stock record by ID
 - `GET /api/stock/store/:storeId` - Get stock for a specific store
 - `GET /api/stock/product/:productId` - Get stock for a specific product
-- `GET /api/stock/low` - Get low stock items
 - `POST /api/stock` - Create new stock record
 - `PUT /api/stock/:id` - Update stock quantity
 - `POST /api/stock/reserve` - Reserve stock for a sale
@@ -60,6 +62,7 @@ catalog-service/
 ## Data Models
 
 ### Product
+
 ```typescript
 {
   id: number;
@@ -70,6 +73,7 @@ catalog-service/
 ```
 
 ### Store
+
 ```typescript
 {
   id: number;
@@ -79,6 +83,7 @@ catalog-service/
 ```
 
 ### Stock
+
 ```typescript
 {
   id: number;
@@ -134,6 +139,7 @@ The service uses the following Prisma models:
 ## Integration
 
 This service integrates with:
+
 - **API Gateway**: Routes traffic through Kong Gateway
 - **Transaction Service**: Provides stock information for sales/refunds
 - **User Service**: Authenticates admin users for management operations
@@ -141,6 +147,7 @@ This service integrates with:
 ## Error Handling
 
 The service provides structured error responses:
+
 - `400 Bad Request`: Invalid input data
 - `404 Not Found`: Resource not found
 - `500 Internal Server Error`: Server errors
@@ -150,6 +157,7 @@ The service provides structured error responses:
 Health check endpoint: `GET /health`
 
 Returns:
+
 ```json
 {
   "status": "healthy",

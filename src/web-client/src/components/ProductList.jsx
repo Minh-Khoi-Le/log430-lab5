@@ -53,7 +53,7 @@ const ProductList = ({
   }
 
   return (
-    <Box sx={{ width: "100%", px: 4, py: 2 }}>
+    <Box sx={{ width: '100%', px: { xs: 1, sm: 2, md: 4 }, py: 2, boxSizing: 'border-box', overflowX: 'hidden' }}>
       {/* Responsive grid container for product cards */}
       <Grid container spacing={4} justifyContent="flex-start">
         {displayProducts.map((product) => (

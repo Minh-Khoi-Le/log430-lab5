@@ -278,8 +278,8 @@ const History = () => {
   }, [user, fetchHistory]);
 
   return (
-    <Box sx={{ py: 4, bgcolor: "#f6f6f6", minHeight: "calc(100vh - 60px)" }}>
-      <Container maxWidth="md">
+    <Box sx={{ py: 4, bgcolor: "#f6f6f6", minHeight: "100vh", width: '100vw', overflowX: 'hidden' }}>
+      <Container maxWidth="md" sx={{ width: '100%', px: { xs: 1, sm: 2, md: 3 } }}>
         {/* Header */}
         <Paper elevation={1} sx={{ p: 2, mb: 3 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
