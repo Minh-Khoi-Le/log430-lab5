@@ -71,6 +71,13 @@ services:
 
 # Global plugins
 plugins:
+  - name: prometheus
+    config:
+      per_consumer: true
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
   - name: cors
     config:
       origins:

@@ -6,6 +6,8 @@ This directory contains utility scripts for managing the LOG430 Lab 5 microservi
 
 - `quick-start.bat` - Stops, builds, and starts all backend services (Postgres, Redis, microservices, Kong API Gateway, seeds DB) and automatically launches the web client locally on your machine (not in Docker)
 - `seed-database.bat` - Rebuilds the db-seed image and forcefully reseeds the database with demo data
+- `start-monitoring.bat` - Starts the Prometheus, Grafana, and exporters stack, then launches all application services. Provides URLs for dashboards and metrics.
+- `test-monitoring.bat` - Runs basic checks to verify that Prometheus, Grafana, and service metrics endpoints are up and collecting data.
 
 ## Usage
 
@@ -34,6 +36,34 @@ To force a full reseed of the database (clears all data and reloads demo data):
 .\seed-database.bat
 ```
 
+### Start Monitoring Stack
+
+To start the monitoring stack and all services:
+
+```batch
+.\start-monitoring.bat
+```
+
+This will:
+
+- Start Prometheus, Grafana, and exporters
+- Start all application services
+- Print URLs for dashboards and metrics
+
+### Test Monitoring
+
+To verify that monitoring is working:
+
+```batch
+.\test-monitoring.bat
+```
+
+This will:
+
+- Check Prometheus targets
+- Check service `/metrics` endpoints
+- Make test requests to generate metrics
+
 ### Stopping All Services
 
 To stop all services and clean up:
@@ -49,6 +79,8 @@ After starting the system:
 - Web Client: [http://localhost:5173](http://localhost:5173)
 - API Gateway: [http://localhost:8000](http://localhost:8000)
 - API Admin: [http://localhost:8001](http://localhost:8001)
+- Prometheus: [http://localhost:9090](http://localhost:9090)
+- Grafana: [http://localhost:3004](http://localhost:3004) (admin/admin)
 
 ## Troubleshooting
 
@@ -57,7 +89,7 @@ If services fail to start:
 1. Try stopping all services first: `docker-compose down -v`
 2. Check Docker logs: `docker-compose logs -f [service-name]`
 3. Ensure Redis is running: `docker ps | findstr redis`
-4. Check if required ports are available (3001-3003, 5173, 6379, 8000, 8001)
+4. Check if required ports are available (3001-3003, 5173, 6379, 8000, 8001, 9090, 3004)
 
 If experiencing cache-related issues:
 

@@ -7,6 +7,7 @@ import { PrismaClient } from '@prisma/client';
 // Import shared caching module
 import { redisClient, CacheService, createCacheMiddleware } from '../../shared/infrastructure/caching';
 import { createLogger } from '../../shared/infrastructure/logging';
+import { register, metricsMiddleware, collectSystemMetrics } from '../../shared/infrastructure/metrics';
 
 // Import repositories
 import { PrismaSaleRepository } from './infrastructure/database/prisma-sale.repository';
@@ -24,11 +25,16 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env['PORT'] ?? 3000;
+const SERVICE_NAME = 'transaction-service';
+
+// Initialize system metrics collection
+collectSystemMetrics(SERVICE_NAME);
 
 // Middleware
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+app.use(metricsMiddleware(SERVICE_NAME));
 
 // Initialize dependencies
 const prisma = new PrismaClient();
@@ -84,6 +90,17 @@ const refundController = new RefundController(refundUseCases);
 // Routes
 app.get('/health', (req, res) => {
   res.json({ status: 'healthy', service: 'transaction-service' });
+});
+
+// Metrics endpoint
+app.get('/metrics', async (req, res) => {
+  try {
+    const metrics = await register.metrics();
+    res.set('Content-Type', register.contentType);
+    res.end(metrics);
+  } catch (error) {
+    res.status(500).end(error);
+  }
 });
 
 // Sale routes

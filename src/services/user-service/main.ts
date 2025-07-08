@@ -9,6 +9,7 @@ import { authenticate } from './infrastructure/middleware/auth.middleware';
 import { createLogger } from '@shared/infrastructure/logging';
 import { requestLogger } from '@shared/infrastructure/http';
 import { redisClient, CacheService, createCacheMiddleware } from '@shared/infrastructure/caching';
+import { register, metricsMiddleware, collectSystemMetrics } from '@shared/infrastructure/metrics';
 
 // Create a logger for the user service
 const logger = createLogger('user-service');
@@ -16,6 +17,10 @@ const logger = createLogger('user-service');
 const app = express();
 const PORT = process.env['PORT'] ?? 3000;
 const prisma = new PrismaClient();
+const SERVICE_NAME = 'user-service';
+
+// Initialize system metrics collection
+collectSystemMetrics(SERVICE_NAME);
 
 // Initialize Redis and Cache Service
 const initializeCache = async () => {
@@ -45,11 +50,23 @@ const userCache = createCacheMiddleware({
 app.use(cors());
 app.use(json());
 app.use(requestLogger); // Add request logging middleware
+app.use(metricsMiddleware(SERVICE_NAME)); // Add metrics middleware
 
 // Health check
 app.get('/health', (req, res) => {
   logger.info('Health check requested');
   res.json({ status: 'ok', service: 'user-service' });
+});
+
+// Metrics endpoint
+app.get('/metrics', async (req, res) => {
+  try {
+    const metrics = await register.metrics();
+    res.set('Content-Type', register.contentType);
+    res.end(metrics);
+  } catch (error) {
+    res.status(500).end(error);
+  }
 });
 
 // Routes
