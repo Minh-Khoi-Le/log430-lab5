@@ -10,6 +10,7 @@
 import React, { useState, useEffect } from "react";
 import { useUser } from "../context/UserContext";
 import { authenticatedFetch, API_ENDPOINTS } from "../api";
+import jsPDF from 'jspdf';
 import {
   Container,
   Box,
@@ -311,6 +312,180 @@ function Dashboard() {
       console.error("Error fetching dashboard data:", error);
       setStats(sampleStats); // Fallback to sample data
       setLoading(false);
+    }
+  };
+
+  const generatePDF = async () => {
+    if (!stats) {
+      alert("No data available to generate report");
+      return;
+    }
+
+    try {
+      // Create a new jsPDF instance
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const pageWidth = pdf.internal.pageSize.width;
+      const pageHeight = pdf.internal.pageSize.height;
+      const margin = 20;
+      let yPosition = margin;
+
+      // Helper function to add a new page if needed
+      const checkNewPage = (height) => {
+        if (yPosition + height > pageHeight - margin) {
+          pdf.addPage();
+          yPosition = margin;
+        }
+      };
+
+      // Header
+      pdf.setFontSize(24);
+      pdf.setTextColor(25, 118, 210); // Primary blue color
+      pdf.text('Sales Performance Report', margin, yPosition);
+      yPosition += 15;
+
+      // Date
+      pdf.setFontSize(10);
+      pdf.setTextColor(100, 100, 100);
+      const reportDate = new Date().toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      pdf.text(`Generated on ${reportDate}`, margin, yPosition);
+      yPosition += 20;
+
+      // Executive Summary
+      checkNewPage(40);
+      pdf.setFontSize(16);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text('Executive Summary', margin, yPosition);
+      yPosition += 10;
+
+      const summaryData = [
+        ['Total Stores', stats.totalStores.toString()],
+        ['Total Products', stats.totalProducts.toString()],
+        ['Total Sales', stats.totalSales.toString()],
+        ['Gross Revenue', `$${(stats.totalRevenue || 0).toFixed(2)}`],
+        ['Total Refunds', stats.totalRefunds.toString()],
+        ['Net Revenue', `$${(stats.netRevenue || 0).toFixed(2)}`]
+      ];
+
+      pdf.setFontSize(12);
+      summaryData.forEach(([label, value]) => {
+        pdf.text(`${label}: ${value}`, margin, yPosition);
+        yPosition += 7;
+      });
+
+      yPosition += 10;
+
+      // Key Performance Indicators
+      checkNewPage(30);
+      pdf.setFontSize(16);
+      pdf.text('Key Performance Indicators', margin, yPosition);
+      yPosition += 10;
+
+      const kpiData = [
+        ['Average Order Value', `$${(stats.averageOrderValue || 0).toFixed(2)}`],
+        ['Refund Rate', `${(stats.refundRate || 0).toFixed(1)}%`],
+        ['Top Performing Store', stats.topPerformingStore?.storeName || 'N/A']
+      ];
+
+      pdf.setFontSize(12);
+      kpiData.forEach(([label, value]) => {
+        pdf.text(`${label}: ${value}`, margin, yPosition);
+        yPosition += 7;
+      });
+
+      yPosition += 15;
+
+      // Store Performance Table
+      if (stats.storePerformanceData && stats.storePerformanceData.length > 0) {
+        checkNewPage(60);
+        pdf.setFontSize(16);
+        pdf.text('Store Performance Analysis', margin, yPosition);
+        yPosition += 10;
+
+        // Table headers
+        pdf.setFontSize(10);
+        pdf.setTextColor(0, 0, 0);
+        const tableHeaders = ['Store', 'Sales', 'Revenue', 'Refunds', 'Rate%', 'Net Revenue'];
+        const colWidths = [40, 25, 30, 25, 25, 35];
+        let xPos = margin;
+
+        // Draw header row
+        tableHeaders.forEach((header, index) => {
+          pdf.text(header, xPos, yPosition);
+          xPos += colWidths[index];
+        });
+        yPosition += 8;
+
+        // Draw a line under headers
+        pdf.line(margin, yPosition - 2, pageWidth - margin, yPosition - 2);
+        yPosition += 3;
+
+        // Table data
+        const sortedStores = [...stats.storePerformanceData].sort((a, b) => b.revenue - a.revenue);
+        sortedStores.forEach((store) => {
+          checkNewPage(8);
+          xPos = margin;
+          const rowData = [
+            store.storeName,
+            store.totalSales.toString(),
+            `$${store.revenue.toFixed(2)}`,
+            store.totalRefunds.toString(),
+            `${store.refundRate.toFixed(1)}%`,
+            `$${store.netRevenue.toFixed(2)}`
+          ];
+
+          rowData.forEach((data, index) => {
+            pdf.text(data, xPos, yPosition);
+            xPos += colWidths[index];
+          });
+          yPosition += 6;
+        });
+
+        yPosition += 10;
+      }
+
+      // Financial Summary
+      checkNewPage(40);
+      pdf.setFontSize(16);
+      pdf.text('Financial Summary', margin, yPosition);
+      yPosition += 10;
+
+      const financialData = [
+        ['Gross Revenue', `$${(stats.totalRevenue || 0).toFixed(2)}`],
+        ['Total Refunds', `-$${(stats.totalRefundAmount || 0).toFixed(2)}`],
+        ['Net Revenue', `$${(stats.netRevenue || 0).toFixed(2)}`],
+        ['Total Transactions', stats.totalSales.toString()],
+        ['Successful Transactions', `${stats.totalSales - stats.totalRefunds} (${((1 - stats.refundRate / 100) * 100).toFixed(1)}%)`]
+      ];
+
+      pdf.setFontSize(12);
+      financialData.forEach(([label, value]) => {
+        pdf.text(`${label}: ${value}`, margin, yPosition);
+        yPosition += 7;
+      });
+
+      // Footer
+      const totalPages = pdf.internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        pdf.setPage(i);
+        pdf.setFontSize(8);
+        pdf.setTextColor(100, 100, 100);
+        pdf.text(`Page ${i} of ${totalPages}`, pageWidth - 30, pageHeight - 10);
+        pdf.text('Generated by Retail System Dashboard', margin, pageHeight - 10);
+      }
+
+      // Save the PDF
+      const fileName = `sales-performance-report-${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(fileName);
+
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Please try again.');
     }
   };
 
@@ -1118,11 +1293,11 @@ function Dashboard() {
                               <TableCell align="right">
                                 <Typography
                                   color={
-                                    store.refundRate > 20
-                                      ? "error.main"
-                                      : store.refundRate > 10
-                                      ? "warning.main"
-                                      : "success.main"
+                                    (() => {
+                                      if (store.refundRate > 20) return "error.main";
+                                      if (store.refundRate > 10) return "warning.main";
+                                      return "success.main";
+                                    })()
                                   }
                                 >
                                   {store.refundRate.toFixed(1)}%
@@ -1256,10 +1431,7 @@ function Dashboard() {
           <Button
             variant="contained"
             startIcon={<FileDownloadIcon />}
-            onClick={() => {
-              //Implement actual report download
-              alert("Feature not implemented yet");
-            }}
+            onClick={generatePDF}
           >
             Download PDF
           </Button>
