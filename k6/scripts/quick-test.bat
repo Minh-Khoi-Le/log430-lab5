@@ -42,11 +42,28 @@ if %errorlevel% neq 0 (
 echo System is available!
 echo.
 
-echo Starting quick validation test...
-echo This will run a basic smoke test to verify all services are working.
+echo Testing API rate limiting behavior...
+echo This will check how the API Gateway handles rate limits.
 echo.
 
-k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --stage 30s:3 --stage 1m:5 --stage 30s:0 ..\tests\auth-test.js
+k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% ..\tests\rate-limiting-test.js
+
+echo.
+echo Based on rate limiting results, running reduced load test...
+echo This will run a basic smoke test with rate limiting considerations.
+echo.
+
+k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --stage 30s:1 --stage 1m:2 --stage 30s:0 ..\tests\auth-test.js
+
+echo.
+echo Waiting 15 seconds to avoid rate limiting...
+timeout /t 15 /nobreak >nul
+
+echo Starting gentle multi-user connectivity test...
+echo This will test multiple concurrent connections with proper rate limiting delays.
+echo.
+
+k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --stage 1m:1 --stage 1m:2 --stage 1m:1 --stage 30s:0 ..\tests\multi-user-validation.js
 
 echo.
 echo ==========================================

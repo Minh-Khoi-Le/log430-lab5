@@ -51,11 +51,14 @@ echo 8. Stock Management Test
 echo 9. Sales Transaction Test
 echo 10. End-to-End Scenario Test
 echo 11. Comprehensive Test (All endpoints)
-echo 12. Run All Tests
+echo 12. Multi-User Concurrent Test (NEW)
+echo 13. High-Concurrency Stress Test (NEW)
+echo 14. Connection Persistence Test (NEW)
+echo 15. Run All Tests
 echo 0. Exit
 echo.
 
-set /p choice="Select test to run (0-12): "
+set /p choice="Select test to run (0-15): "
 
 if "%choice%"=="0" exit /b 0
 if "%choice%"=="1" goto smoke
@@ -69,7 +72,10 @@ if "%choice%"=="8" goto stock
 if "%choice%"=="9" goto sales
 if "%choice%"=="10" goto e2e
 if "%choice%"=="11" goto comprehensive
-if "%choice%"=="12" goto all
+if "%choice%"=="12" goto multiuser
+if "%choice%"=="13" goto highconcurrency
+if "%choice%"=="14" goto persistence
+if "%choice%"=="15" goto all
 
 echo Invalid choice. Please try again.
 pause
@@ -130,31 +136,64 @@ echo Running Comprehensive Test...
 k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% ..\tests\comprehensive-test.js
 goto end
 
+:multiuser
+echo Running Multi-User Concurrent Test...
+echo This test simulates multiple users connected simultaneously with realistic behavior patterns.
+k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% ..\scenarios\multi-user-scenario.js
+goto end
+
+:highconcurrency
+echo Running High-Concurrency Stress Test...
+echo This test simulates extreme load with up to 200 concurrent users.
+echo WARNING: This test may cause system performance degradation.
+set /p confirm="Continue with high-concurrency test? (y/n): "
+if /i not "%confirm%"=="y" goto end
+k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% ..\scenarios\high-concurrency-stress.js
+goto end
+
+:persistence
+echo Running Connection Persistence Test...
+echo This test simulates long-running user sessions (15-30 minutes per user).
+echo NOTE: This test will run for approximately 1 hour.
+set /p confirm="Continue with persistence test? (y/n): "
+if /i not "%confirm%"=="y" goto end
+k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% ..\scenarios\connection-persistence.js
+goto end
+
 :all
 echo Running All Tests...
 echo.
-echo 1/8 - Authentication Test
+echo 1/11 - Authentication Test
 k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --quiet ..\tests\auth-test.js
 echo.
-echo 2/8 - Product Catalog Test
+echo 2/11 - Product Catalog Test
 k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --quiet ..\tests\product-test.js
 echo.
-echo 3/8 - Stock Management Test
+echo 3/11 - Stock Management Test
 k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --quiet ..\tests\stock-test.js
 echo.
-echo 4/8 - Sales Transaction Test
+echo 4/11 - Sales Transaction Test
 k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --quiet ..\tests\sales-test.js
 echo.
-echo 5/8 - Comprehensive Test
+echo 5/11 - Comprehensive Test
 k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --quiet ..\tests\comprehensive-test.js
 echo.
-echo 6/8 - End-to-End Scenario Test
+echo 6/11 - End-to-End Scenario Test
 k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --quiet ..\scenarios\e2e-scenario.js
 echo.
-echo 7/8 - Spike Test
+echo 7/11 - Spike Test
 k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --quiet ..\scenarios\spike-test.js
 echo.
-echo 8/8 - Soak Test (Quick version)
+echo 8/11 - Multi-User Concurrent Test
+k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --quiet ..\scenarios\multi-user-scenario.js
+echo.
+echo 9/11 - High-Concurrency Stress Test (Light version)
+k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --stage 1m:20 --stage 2m:50 --stage 1m:20 --stage 1m:0 --quiet ..\scenarios\high-concurrency-stress.js
+echo.
+echo 10/11 - Connection Persistence Test (Quick version)
+k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --stage 2m:10 --stage 5m:15 --stage 2m:0 --quiet ..\scenarios\connection-persistence.js
+echo.
+echo 11/11 - Soak Test (Quick version)
 k6 run --env BASE_URL=%BASE_URL% --env API_KEY=%API_KEY% --stage 2m:10 --stage 5m:10 --stage 2m:0 --quiet ..\tests\comprehensive-test.js
 echo.
 echo All tests completed!

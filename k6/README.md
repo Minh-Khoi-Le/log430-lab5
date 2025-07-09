@@ -27,7 +27,10 @@ k6/
 │   └── comprehensive-test.js # All endpoints testing
 ├── scenarios/
 │   ├── e2e-scenario.js     # End-to-end user journey testing
-│   └── spike-test.js       # Spike load testing
+│   ├── spike-test.js       # Spike load testing
+│   ├── multi-user-scenario.js # Multi-user concurrent testing
+│   ├── high-concurrency-stress.js # High-concurrency stress testing
+│   └── connection-persistence.js # Long-running session testing
 ├── utils/
 │   ├── helpers.js          # Common utility functions
 │   └── auth.js             # Authentication utilities
@@ -141,6 +144,33 @@ run-tests.bat
 **Purpose**: Test sustained load over extended periods
 **Command**: `k6 run --stage 2m:20 --stage 30m:20 --stage 2m:0 tests/comprehensive-test.js`
 **Expected**: No memory leaks, stable performance
+
+### 6. Multi-User Concurrent Tests
+
+**Purpose**: Simulate multiple users connected simultaneously with realistic behavior patterns
+**Command**: `k6 run scenarios/multi-user-scenario.js`
+**Expected**: Response times < 3s, error rate < 12%
+
+**Features**:
+
+- 70% customers, 25% managers, 5% admins
+- Realistic user behavior patterns
+- Sustained concurrent connections
+- Peak traffic simulation
+
+### 7. High-Concurrency Stress Tests
+
+**Purpose**: Test system limits with extreme load (up to 200 concurrent users)
+**Command**: `k6 run scenarios/high-concurrency-stress.js`
+**Expected**: Response times < 5s, error rate < 25%
+**Warning**: May cause system performance degradation
+
+### 8. Connection Persistence Tests
+
+**Purpose**: Simulate long-running user sessions (15-30 minutes per user)
+**Command**: `k6 run scenarios/connection-persistence.js`
+**Expected**: Response times < 2s, error rate < 8%
+**Duration**: Approximately 1 hour
 
 ## Critical Endpoints Tested
 
@@ -271,6 +301,74 @@ Before running tests:
 
 - [ ] System is running and healthy
 - [ ] All services are accessible
+- [ ] Database is seeded with test data
+- [ ] API Gateway is configured correctly
+- [ ] Monitoring tools are running (optional)
+
+## Additional Documentation
+
+For detailed information about multi-user testing capabilities, see:
+
+- [Multi-User Testing Guide](MULTI_USER_TESTING.md) - Comprehensive guide to concurrent user testing
+- [Configuration Reference](config/config.js) - Complete configuration options
+- [Test Results Analysis](../monitoring/README.md) - How to analyze test results with Grafana
+
+## Performance Expectations
+
+### Normal Load (< 50 users)
+
+- Response times: < 2 seconds
+- Error rate: < 5%
+- CPU usage: < 60%
+- Memory usage: < 70%
+
+### High Load (50-100 users)
+
+- Response times: < 3 seconds
+- Error rate: < 10%
+- CPU usage: < 80%
+- Memory usage: < 80%
+
+### Stress Load (100+ users)
+
+- Response times: < 5 seconds
+- Error rate: < 25%
+- System may show performance degradation
+- Monitor for recovery after load reduction
+
+## Integration with Monitoring
+
+The k6 tests integrate with the existing monitoring stack:
+
+- **Prometheus**: Collects metrics during test execution
+- **Grafana**: Visualizes performance during tests
+- **Alert Manager**: Triggers alerts when thresholds are exceeded
+
+Run tests while monitoring the Grafana dashboards to get real-time insights into system performance.
+
+## Contributing
+
+When adding new tests:
+
+1. Follow the existing code structure
+2. Add appropriate error handling
+3. Include proper documentation
+4. Test with multiple user scenarios
+5. Update configuration if needed
+
+## Support
+
+For issues or questions:
+
+1. Check the troubleshooting section
+2. Review k6 documentation: <https://k6.io/docs/>
+3. Check system logs for errors
+4. Verify all services are running correctly
+
+---
+
+**Note**: The multi-user testing features simulate realistic concurrent user behavior. Always monitor system resources during testing and adjust load parameters based on your system's capabilities.
+
 - [ ] Database is populated with test data
 - [ ] API Gateway is configured correctly
 - [ ] k6 is installed and accessible

@@ -156,6 +156,41 @@ export const STAGES = {
     { duration: '2m', target: 20 },   // Ramp up
     { duration: '30m', target: 20 },  // Stay at load for extended period
     { duration: '2m', target: 0 }     // Ramp down
+  ],
+  
+  // Multi-user concurrent test - realistic user distribution
+  MULTI_USER: [
+    { duration: '2m', target: 10 },   // Morning opening
+    { duration: '3m', target: 25 },   // Mid-morning traffic
+    { duration: '5m', target: 40 },   // Peak morning traffic
+    { duration: '10m', target: 50 },  // Lunch rush
+    { duration: '8m', target: 60 },   // Afternoon peak
+    { duration: '3m', target: 30 },   // Evening wind-down
+    { duration: '2m', target: 0 }     // System shutdown
+  ],
+  
+  // High concurrency stress test - extreme load
+  HIGH_CONCURRENCY: [
+    { duration: '1m', target: 20 },   // Initial load
+    { duration: '2m', target: 50 },   // Moderate load
+    { duration: '2m', target: 100 },  // High load
+    { duration: '3m', target: 150 },  // Very high load
+    { duration: '5m', target: 200 },  // Peak concurrent users
+    { duration: '8m', target: 200 },  // Sustained peak load
+    { duration: '2m', target: 100 },  // Recovery phase
+    { duration: '1m', target: 0 }     // Ramp down
+  ],
+  
+  // Connection persistence - long-running sessions
+  PERSISTENCE: [
+    { duration: '3m', target: 15 },   // Early users connect
+    { duration: '5m', target: 30 },   // More users join
+    { duration: '10m', target: 45 },  // Peak concurrent connections
+    { duration: '15m', target: 60 },  // Sustained high connections
+    { duration: '20m', target: 75 },  // Maximum persistent connections
+    { duration: '10m', target: 60 },  // Some users disconnect
+    { duration: '5m', target: 30 },   // Gradual decrease
+    { duration: '2m', target: 0 }     // All users disconnect
   ]
 };
 

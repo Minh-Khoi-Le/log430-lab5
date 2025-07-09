@@ -1,14 +1,12 @@
 /**
  * Products Page
- * 
- * Clean, academic-focused product catalog with clear data presentation
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { useUser } from '../context/UserContext';
-import { apiFetch, API_ENDPOINTS } from '../api';
-import ProductList from '../components/ProductList';
-import Modal from '../components/Modal';
+import React, { useState, useEffect, useCallback } from "react";
+import { useUser } from "../context/UserContext";
+import { apiFetch, API_ENDPOINTS } from "../api";
+import ProductList from "../components/ProductList";
+import Modal from "../components/Modal";
 import {
   Container,
   Box,
@@ -24,12 +22,12 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-} from '@mui/material';
+} from "@mui/material";
 import {
   Search as SearchIcon,
   Add as AddIcon,
   Refresh as RefreshIcon,
-} from '@mui/icons-material';
+} from "@mui/icons-material";
 
 // Sample products data as fallback
 const sampleProducts = [
@@ -37,13 +35,14 @@ const sampleProducts = [
     id: 1,
     name: "Wireless Bluetooth Headphones",
     price: 149.99,
-    description: "Premium noise-cancelling wireless headphones with 30-hour battery life",
+    description:
+      "Premium noise-cancelling wireless headphones with 30-hour battery life",
     category: "Electronics",
     stocks: [
       { storeId: 1, quantity: 0 },
       { storeId: 2, quantity: 5 },
-      { storeId: 3, quantity: 3 }
-    ]
+      { storeId: 3, quantity: 3 },
+    ],
   },
   {
     id: 2,
@@ -54,8 +53,8 @@ const sampleProducts = [
     stocks: [
       { storeId: 1, quantity: 0 },
       { storeId: 2, quantity: 2 },
-      { storeId: 3, quantity: 7 }
-    ]
+      { storeId: 3, quantity: 7 },
+    ],
   },
   {
     id: 3,
@@ -66,73 +65,80 @@ const sampleProducts = [
     stocks: [
       { storeId: 1, quantity: 12 },
       { storeId: 2, quantity: 8 },
-      { storeId: 3, quantity: 0 }
-    ]
-  }
+      { storeId: 3, quantity: 0 },
+    ],
+  },
 ];
 
 // --- ProductCreateForm component ---
 function ProductCreateForm({ onSuccess, onCancel }) {
-  const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [description, setDescription] = useState('');
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setError("");
     if (!name || !price) {
-      setError('Name and price are required.');
+      setError("Name and price are required.");
       return;
     }
     setLoading(true);
     try {
       const payload = { name, price: parseFloat(price), description };
       const res = await apiFetch(API_ENDPOINTS.PRODUCTS.BASE, {
-        method: 'POST',
+        method: "POST",
         body: JSON.stringify(payload),
-        headers: { 'Content-Type': 'application/json' }
+        headers: { "Content-Type": "application/json" },
       });
       if (res && (res.success || res.id || res.name)) {
         onSuccess && onSuccess();
       } else {
-        setError(res?.error || 'Failed to create product.');
+        setError(res?.error || "Failed to create product.");
       }
     } catch (err) {
-      setError('Failed to create product.');
+      setError("Failed to create product.");
     }
     setLoading(false);
   };
 
   return (
     <form onSubmit={handleSubmit}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 320 }}>
+      <Box
+        sx={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 320 }}
+      >
         <TextField
           label="Product Name"
           value={name}
-          onChange={e => setName(e.target.value)}
+          onChange={(e) => setName(e.target.value)}
           required
         />
         <TextField
           label="Price"
           type="number"
           value={price}
-          onChange={e => setPrice(e.target.value)}
+          onChange={(e) => setPrice(e.target.value)}
           required
           inputProps={{ min: 0, step: 0.01 }}
         />
         <TextField
           label="Description"
           value={description}
-          onChange={e => setDescription(e.target.value)}
+          onChange={(e) => setDescription(e.target.value)}
           multiline
           rows={2}
         />
         {error && <Alert severity="error">{error}</Alert>}
-        <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
-          <Button type="submit" variant="contained" color="primary" disabled={loading}>
-            {loading ? 'Creating...' : 'Create Product'}
+        <Box sx={{ display: "flex", gap: 2, mt: 1 }}>
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={loading}
+          >
+            {loading ? "Creating..." : "Create Product"}
           </Button>
           <Button onClick={onCancel} disabled={loading}>
             Cancel
@@ -145,19 +151,21 @@ function ProductCreateForm({ onSuccess, onCancel }) {
 
 // --- ProductEditForm component ---
 function ProductEditForm({ product, stores, onSuccess, onCancel }) {
-  const [name, setName] = useState(product?.name || '');
-  const [price, setPrice] = useState(product?.price || '');
-  const [description, setDescription] = useState(product?.description || '');
+  const [name, setName] = useState(product?.name || "");
+  const [price, setPrice] = useState(product?.price || "");
+  const [description, setDescription] = useState(product?.description || "");
   // Ensure all stores are represented in stocks, even if quantity is 0
   const getAllStocks = (productStocks, stores) => {
-    return stores.map(store => {
-      const found = productStocks?.find(s => s.storeId === store.id);
+    return stores.map((store) => {
+      const found = productStocks?.find((s) => s.storeId === store.id);
       return found ? { ...found } : { storeId: store.id, quantity: 0 };
     });
   };
-  const [stocks, setStocks] = useState(getAllStocks(product?.stocks || [], stores));
+  const [stocks, setStocks] = useState(
+    getAllStocks(product?.stocks || [], stores)
+  );
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   // Update stocks when stores or product changes
   useEffect(() => {
@@ -166,8 +174,8 @@ function ProductEditForm({ product, stores, onSuccess, onCancel }) {
 
   // Handle stock quantity change
   const handleStockChange = (storeId, value) => {
-    setStocks(stocks =>
-      stocks.map(s =>
+    setStocks((stocks) =>
+      stocks.map((s) =>
         s.storeId === storeId ? { ...s, quantity: Number(value) } : s
       )
     );
@@ -175,81 +183,94 @@ function ProductEditForm({ product, stores, onSuccess, onCancel }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError('');
+    setError("");
     if (!name || !price) {
-      setError('Name and price are required.');
+      setError("Name and price are required.");
       return;
     }
     setLoading(true);
     try {
       // Update product fields
       await apiFetch(API_ENDPOINTS.PRODUCTS.BY_ID(product.id), {
-        method: 'PUT',
+        method: "PUT",
         body: JSON.stringify({ name, price: parseFloat(price), description }),
-        headers: { 'Content-Type': 'application/json' }
+        headers: { "Content-Type": "application/json" },
       });
       // Update or create stocks
       await Promise.all(
-        stocks.map(stock => {
+        stocks.map((stock) => {
           if (stock.id) {
             // Update existing stock
             return apiFetch(`/api/stock/${stock.id}`, {
-              method: 'PUT',
+              method: "PUT",
               body: JSON.stringify({ quantity: stock.quantity }),
-              headers: { 'Content-Type': 'application/json' }
+              headers: { "Content-Type": "application/json" },
             });
           } else {
             // Create new stock record for this store
-            return apiFetch('/api/stock', {
-              method: 'POST',
-              body: JSON.stringify({ productId: product.id, storeId: stock.storeId, quantity: stock.quantity }),
-              headers: { 'Content-Type': 'application/json' }
+            return apiFetch("/api/stock", {
+              method: "POST",
+              body: JSON.stringify({
+                productId: product.id,
+                storeId: stock.storeId,
+                quantity: stock.quantity,
+              }),
+              headers: { "Content-Type": "application/json" },
             });
           }
         })
       );
       onSuccess && onSuccess();
     } catch (err) {
-      setError('Failed to update product or stock.');
+      setError("Failed to update product or stock.");
     }
     setLoading(false);
   };
 
   return (
     <form onSubmit={handleSubmit}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 320 }}>
+      <Box
+        sx={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 320 }}
+      >
         <TextField
           label="Product Name"
           value={name}
-          onChange={e => setName(e.target.value)}
+          onChange={(e) => setName(e.target.value)}
           required
         />
         <TextField
           label="Price"
           type="number"
           value={price}
-          onChange={e => setPrice(e.target.value)}
+          onChange={(e) => setPrice(e.target.value)}
           required
           inputProps={{ min: 0, step: 0.01 }}
         />
         <TextField
           label="Description"
           value={description}
-          onChange={e => setDescription(e.target.value)}
+          onChange={(e) => setDescription(e.target.value)}
           multiline
           rows={2}
         />
         <Box sx={{ mt: 2 }}>
           <Typography variant="subtitle1">Stock by Store</Typography>
-          {stocks.map(stock => (
-            <Box key={stock.storeId} sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1 }}>
+          {stocks.map((stock) => (
+            <Box
+              key={stock.storeId}
+              sx={{ display: "flex", alignItems: "center", gap: 2, mt: 1 }}
+            >
               <Typography sx={{ minWidth: 120 }}>
-                {stores.find(s => s.id === stock.storeId)?.name || `Store ${stock.storeId}`}:
+                {stores.find((s) => s.id === stock.storeId)?.name ||
+                  `Store ${stock.storeId}`}
+                :
               </Typography>
               <TextField
                 type="number"
                 value={stock.quantity}
-                onChange={e => handleStockChange(stock.storeId, e.target.value)}
+                onChange={(e) =>
+                  handleStockChange(stock.storeId, e.target.value)
+                }
                 inputProps={{ min: 0, step: 1 }}
                 size="small"
                 sx={{ width: 100 }}
@@ -258,9 +279,14 @@ function ProductEditForm({ product, stores, onSuccess, onCancel }) {
           ))}
         </Box>
         {error && <Alert severity="error">{error}</Alert>}
-        <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
-          <Button type="submit" variant="contained" color="primary" disabled={loading}>
-            {loading ? 'Saving...' : 'Save Changes'}
+        <Box sx={{ display: "flex", gap: 2, mt: 1 }}>
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={loading}
+          >
+            {loading ? "Saving..." : "Save Changes"}
           </Button>
           <Button onClick={onCancel} disabled={loading}>
             Cancel
@@ -276,65 +302,73 @@ function Products() {
   const [products, setProducts] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory] = useState('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory] = useState("all");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [productToEdit, setProductToEdit] = useState(null);
   const [stores, setStores] = useState([]);
+  const [sortBy, setSortBy] = useState("stock"); // Default to 'stock' for available stock sorting
+  const [sortOrder, setSortOrder] = useState("desc"); // Default to 'desc' for descending order
+
+  // Get selected storeId from user context or default to first store
+  const selectedStoreId = user?.storeId || (stores[0]?.id ?? null);
 
   // Define fetchProducts before useEffect hooks
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
-      setError('');
-      
+      setError("");
+
       // Fetch both products and stock data in parallel
       try {
         const [productsResponse, stockResponse] = await Promise.all([
           apiFetch(API_ENDPOINTS.PRODUCTS.BASE),
-          apiFetch(API_ENDPOINTS.STOCK.BASE)
+          apiFetch(API_ENDPOINTS.STOCK.BASE),
         ]);
-        
-        const productsData = productsResponse.success ? productsResponse.data : productsResponse;
+
+        const productsData = productsResponse.success
+          ? productsResponse.data
+          : productsResponse;
         const products = productsData.products || productsData;
-        
-        const stockData = stockResponse.success ? stockResponse.data : stockResponse;
+
+        const stockData = stockResponse.success
+          ? stockResponse.data
+          : stockResponse;
         const inventory = stockData.inventory || stockData;
-        
+
         if (Array.isArray(products) && products.length > 0) {
           // Merge stock data with products
-          const productsWithStock = products.map(product => {
+          const productsWithStock = products.map((product) => {
             // Find all stock entries for this product across all stores
-            const productStocks = Array.isArray(inventory) 
-              ? inventory.filter(stock => stock.productId === product.id)
+            const productStocks = Array.isArray(inventory)
+              ? inventory.filter((stock) => stock.productId === product.id)
               : [];
-            
+
             return {
               ...product,
-              stocks: productStocks
+              stocks: productStocks,
             };
           });
-          
+
           setProducts(productsWithStock);
         } else {
           // Fallback to sample data if no products from API
           setProducts(sampleProducts);
         }
       } catch (apiError) {
-        console.error('API Error, using sample data:', apiError);
+        console.error("API Error, using sample data:", apiError);
         // Use sample data as fallback
         setProducts(sampleProducts);
       }
-      
+
       setLoading(false);
-      
     } catch (error) {
-      setError('Failed to load products. Please try again.');
-      console.error('Error fetching products:', error);
+      setError("Failed to load products. Please try again.");
+      console.error("Error fetching products:", error);
       setProducts(sampleProducts); // Fallback to sample data
       setLoading(false);
     }
@@ -346,20 +380,20 @@ function Products() {
 
   useEffect(() => {
     filterProducts();
-  }, [products, searchTerm, selectedCategory]);
+  }, [products, searchTerm, selectedCategory, sortBy, sortOrder]);
 
   // Listen for stock updates from cart purchases
   useEffect(() => {
     const handleStockUpdate = (event) => {
-      console.log('Stock update event received:', event.detail);
+      console.log("Stock update event received:", event.detail);
       // Refetch products to get updated stock information
       fetchProducts();
     };
 
-    window.addEventListener('stockUpdated', handleStockUpdate);
-    
+    window.addEventListener("stockUpdated", handleStockUpdate);
+
     return () => {
-      window.removeEventListener('stockUpdated', handleStockUpdate);
+      window.removeEventListener("stockUpdated", handleStockUpdate);
     };
   }, [fetchProducts]);
 
@@ -367,18 +401,44 @@ function Products() {
     let filtered = products;
 
     if (searchTerm) {
-      filtered = filtered.filter(product =>
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.description.toLowerCase().includes(searchTerm.toLowerCase())
+      filtered = filtered.filter(
+        (product) =>
+          product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          product.description.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(product => product.category === selectedCategory);
+    if (selectedCategory !== "all") {
+      filtered = filtered.filter(
+        (product) => product.category === selectedCategory
+      );
     }
 
-    // Always sort alphabetically by product name
-    filtered = filtered.slice().sort((a, b) => a.name.localeCompare(b.name));
+    // Sorting logic
+    filtered = filtered.slice().sort((a, b) => {
+      let aValue, bValue;
+      if (sortBy === "name") {
+        aValue = a.name.toLowerCase();
+        bValue = b.name.toLowerCase();
+        if (aValue < bValue) return sortOrder === "asc" ? -1 : 1;
+        if (aValue > bValue) return sortOrder === "asc" ? 1 : -1;
+        return 0;
+      } else if (sortBy === "price") {
+        aValue = a.price;
+        bValue = b.price;
+        return sortOrder === "asc" ? aValue - bValue : bValue - aValue;
+      } else if (sortBy === "stock") {
+        // Sort by available stock for the selected store only
+        const aStock = Array.isArray(a.stocks)
+          ? (a.stocks.find(s => s.storeId === selectedStoreId)?.quantity || 0)
+          : 0;
+        const bStock = Array.isArray(b.stocks)
+          ? (b.stocks.find(s => s.storeId === selectedStoreId)?.quantity || 0)
+          : 0;
+        return sortOrder === "asc" ? aStock - bStock : bStock - aStock;
+      }
+      return 0;
+    });
 
     setFilteredProducts(filtered);
   };
@@ -396,16 +456,16 @@ function Products() {
   const confirmDeleteProduct = async () => {
     if (!productToDelete) return;
     setLoading(true);
-    setError('');
+    setError("");
     try {
       await apiFetch(API_ENDPOINTS.PRODUCTS.BY_ID(productToDelete.id), {
-        method: 'DELETE',
+        method: "DELETE",
       });
       setDeleteDialogOpen(false);
       setProductToDelete(null);
       fetchProducts();
     } catch (err) {
-      setError('Failed to delete product.');
+      setError("Failed to delete product.");
       setDeleteDialogOpen(false);
       setProductToDelete(null);
     }
@@ -429,7 +489,14 @@ function Products() {
   if (loading) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 400 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            height: 400,
+          }}
+        >
           <CircularProgress size={50} />
         </Box>
       </Container>
@@ -437,20 +504,35 @@ function Products() {
   }
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: "#f6f6f6",
-      fontFamily: "sans-serif",
-      position: "relative"
-    }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: "#f6f6f6",
+        fontFamily: "sans-serif",
+        position: "relative",
+      }}
+    >
       {/* Header with title and filters */}
       <Paper elevation={1} sx={{ mx: 4, mt: 4, p: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-          <Typography variant="h6">
-            Product Catalog
-          </Typography>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 2,
+          }}
+        >
+          <Typography variant="h6">Product Catalog</Typography>
+
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              flexWrap: "wrap",
+            }}
+          >
             <Button
               variant="outlined"
               size="small"
@@ -460,7 +542,7 @@ function Products() {
             >
               {loading ? "Refreshing..." : "Refresh"}
             </Button>
-            {user?.role === 'admin' && (
+            {user?.role === "admin" && (
               <Button
                 variant="contained"
                 size="small"
@@ -475,13 +557,23 @@ function Products() {
       </Paper>
 
       {/* Main content area with product listing */}
-      <div style={{
-        margin: "20px 28px 0 28px",
-        padding: "20px 0",
-        minHeight: "60vh"
-      }}>
+      <div
+        style={{
+          margin: "20px 28px 0 28px",
+          padding: "20px 0",
+          minHeight: "60vh",
+        }}
+      >
         {loading ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', my: 4, gap: 2 }}>
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              my: 4,
+              gap: 2,
+            }}
+          >
             <CircularProgress size={50} />
             <Typography>Loading products...</Typography>
             {error && (
@@ -512,6 +604,28 @@ function Products() {
                     }}
                   />
                 </Grid>
+                <Grid item xs={12} md={6} sx={{ display: 'flex', gap: 2, justifyContent: { xs: 'flex-start', md: 'flex-end' }, alignItems: 'center' }}>
+                  <TextField
+                    select
+                    label="Sort By"
+                    value={sortBy}
+                    onChange={e => setSortBy(e.target.value)}
+                    size="small"
+                    SelectProps={{ native: true }} 
+                    sx={{ minWidth: 140 }}
+                  >
+                    <option value="name">Name</option>
+                    <option value="price">Price</option>
+                    <option value="stock">Available Stock</option>
+                  </TextField>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => setSortOrder(o => o === "asc" ? "desc" : "asc")}
+                  >
+                    {sortOrder === "asc" ? "Asc" : "Desc"}
+                  </Button>
+                </Grid>
               </Grid>
             </Paper>
 
@@ -524,8 +638,10 @@ function Products() {
             {/* Product List */}
             <ProductList
               products={filteredProducts}
-              onEdit={user?.role === 'admin' ? handleEditProduct : undefined}
-              onDelete={user?.role === 'admin' ? handleDeleteProduct : undefined}
+              onEdit={user?.role === "admin" ? handleEditProduct : undefined}
+              onDelete={
+                user?.role === "admin" ? handleDeleteProduct : undefined
+              }
               userRole={user?.role}
             />
           </>
@@ -533,7 +649,7 @@ function Products() {
       </div>
 
       {/* Add Product Modal */}
-      {user?.role === 'admin' && (
+      {user?.role === "admin" && (
         <Modal
           open={showAddModal}
           title="Add New Product"
@@ -553,7 +669,7 @@ function Products() {
       )}
 
       {/* Edit Product Modal */}
-      {user?.role === 'admin' && (
+      {user?.role === "admin" && (
         <Modal
           open={editDialogOpen}
           title="Edit Product"
@@ -579,14 +695,26 @@ function Products() {
       )}
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      >
         <DialogTitle>Delete Product</DialogTitle>
         <DialogContent>
-          <Typography>Are you sure you want to delete <b>{productToDelete?.name}</b>?</Typography>
+          <Typography>
+            Are you sure you want to delete <b>{productToDelete?.name}</b>?
+          </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)} disabled={loading}>Cancel</Button>
-          <Button onClick={confirmDeleteProduct} color="error" variant="contained" disabled={loading}>
+          <Button onClick={() => setDeleteDialogOpen(false)} disabled={loading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={confirmDeleteProduct}
+            color="error"
+            variant="contained"
+            disabled={loading}
+          >
             Delete
           </Button>
         </DialogActions>

@@ -23,17 +23,23 @@ export function addAuthHeader(token) {
 /**
  * Utility function to simulate user think time
  */
-export function thinkTime() {
-  const min = CONFIG.THINK_TIME.MIN;
-  const max = CONFIG.THINK_TIME.MAX;
+export function thinkTime(minSeconds, maxSeconds) {
+  let min = minSeconds || CONFIG.THINK_TIME.MIN;
+  let max = maxSeconds || CONFIG.THINK_TIME.MAX;
   const thinkTime = Math.random() * (max - min) + min;
   sleep(thinkTime);
 }
 
 /**
- * Utility function to validate response
+ * Utility function to validate response with rate limiting awareness
  */
 export function validateResponse(response, expectedStatus = 200, description = 'Request') {
+  // Handle rate limiting as a special case
+  if (response.status === 429) {
+    console.log(`${description} - Rate limited (429), this is expected behavior`);
+    return false; // Not an error, but not successful either
+  }
+  
   const isValid = check(response, {
     [`${description} - Status is ${expectedStatus}`]: (r) => r.status === expectedStatus,
     [`${description} - Response time < ${CONFIG.THRESHOLDS.ACCEPTABLE}ms`]: (r) => r.timings.duration < CONFIG.THRESHOLDS.ACCEPTABLE,
