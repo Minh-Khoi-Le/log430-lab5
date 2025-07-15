@@ -8,6 +8,21 @@ This directory contains utility scripts for managing the LOG430 Lab 5 microservi
 - `seed-database.bat` - Rebuilds the db-seed image and forcefully reseeds the database with demo data
 - `start-monitoring.bat` - Starts the Prometheus, Grafana, and exporters stack, then launches all application services. Provides URLs for dashboards and metrics.
 - `test-monitoring.bat` - Runs basic checks to verify that Prometheus, Grafana, and service metrics endpoints are up and collecting data.
+- `run-all-tests.bat` - Runs all unit tests for every microservice (User, Catalog, Transaction) and prints a summary of results for each service.
+
+### Run All Tests
+
+To run all unit tests for every microservice and see a summary of results:
+
+```batch
+.\run-all-tests.bat
+```
+
+This will:
+
+1. Run `npm test` in each service folder (User, Catalog, Transaction)
+2. Show the actual test output for each service
+3. Print a summary of passed/failed services at the end
 
 ## Usage
 

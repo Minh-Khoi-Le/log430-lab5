@@ -17,7 +17,8 @@
     "baseUrl": "../../",
     "paths": {
       "@shared/*": ["shared/*"]
-    }
+    },
+    "types": ["jest", "node"]
   },
   "include": [
     "**/*",
@@ -25,8 +26,6 @@
   ],
   "exclude": [
     "node_modules",
-    "dist",
-    "**/*.test.ts",
-    "**/*.spec.ts"
+    "dist"
   ]
 }
