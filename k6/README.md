@@ -346,47 +346,6 @@ The k6 tests integrate with the existing monitoring stack:
 
 Run tests while monitoring the Grafana dashboards to get real-time insights into system performance.
 
-## Contributing
-
-When adding new tests:
-
-1. Follow the existing code structure
-2. Add appropriate error handling
-3. Include proper documentation
-4. Test with multiple user scenarios
-5. Update configuration if needed
-
-## Support
-
-For issues or questions:
-
-1. Check the troubleshooting section
-2. Review k6 documentation: <https://k6.io/docs/>
-3. Check system logs for errors
-4. Verify all services are running correctly
-
----
-
-**Note**: The multi-user testing features simulate realistic concurrent user behavior. Always monitor system resources during testing and adjust load parameters based on your system's capabilities.
-
-- [ ] Database is populated with test data
-- [ ] API Gateway is configured correctly
-- [ ] k6 is installed and accessible
-
-During test execution:
-
-- [ ] Monitor system resources (CPU, memory)
-- [ ] Watch for error messages in logs
-- [ ] Check response times in real-time
-- [ ] Verify test data integrity
-
-After test completion:
-
-- [ ] Analyze performance metrics
-- [ ] Review error logs
-- [ ] Document any issues found
-- [ ] Compare results with baseline
-
 ## Related Documentation
 
 - [k6 Documentation](https://k6.io/docs/)

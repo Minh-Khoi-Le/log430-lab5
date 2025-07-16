@@ -85,9 +85,33 @@ Copy `.env.example` to `.env` and configure the following:
 - `PORT` - Server port (default: 3000)
 - `NODE_ENV` - Environment (development/production)
 
-## Database Schema
+## Database Architecture
 
-The service uses Prisma ORM with the following User model:
+The service uses a **centralized database infrastructure** with domain-specific repository patterns:
+
+### Shared Infrastructure
+
+- **Database Manager**: Centralized Prisma client management from `src/shared/infrastructure/database/`
+- **Repository Pattern**: Domain-specific interfaces with shared implementations
+- **Connection Optimization**: Single shared connection pool across all services
+
+### Domain Boundaries
+
+The User Service has access to:
+
+- **Direct Access**: User entities only
+- **Cross-Domain Access**: None required (maintains strict domain boundaries)
+
+### Repository Interface
+
+```typescript
+interface IUserRepository extends IBaseRepository<User, number> {
+  findByName(name: string): Promise<User | null>;
+  findByRole(role: string): Promise<User[]>;
+}
+```
+
+### Database Schema
 
 ```prisma
 model User {
@@ -95,6 +119,8 @@ model User {
   name     String @unique
   password String
   role     String @default("client")
+  sales    Sale[]
+  refunds  Refund[]
 }
 ```
 
@@ -153,7 +179,7 @@ The service follows Clean Architecture principles:
 ## Dependencies
 
 - Express.js - Web framework
-- Prisma - ORM and database toolkit
+- Shared Database Infrastructure - Centralized database management
 - bcryptjs - Password hashing
 - jsonwebtoken - JWT token handling
 - cors - CORS middleware

@@ -1,9 +1,8 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-import * as bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { CacheService } from '@shared/infrastructure/caching';
 import { createLogger } from '@shared/infrastructure/logging';
+import { IUserRepository } from '../../domain/repositories/user.repository';
 
 // Create a logger for the AuthController
 const logger = createLogger('auth-controller');
@@ -16,24 +15,35 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
+/**
+ * HTTP controller for authentication-related operations.
+ * Handles user login, logout, and authentication validation.
+ */
 export class AuthController {
   private readonly cacheService: CacheService | undefined;
   
+  /**
+   * @param userRepository User repository for authentication operations
+   * @param cacheService Optional cache service for performance optimization
+   */
   constructor(
-    private readonly prisma: PrismaClient,
+    private readonly userRepository: IUserRepository,
     cacheService?: CacheService
   ) {
     this.cacheService = cacheService;
   }
 
+  /**
+   * Handles user login and JWT token generation.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async login(req: Request, res: Response): Promise<void> {
     try {
       const { name, password } = req.body;
 
-      // Find user by name
-      const user = await this.prisma.user.findUnique({
-        where: { name }
-      });
+      // Validate user credentials using the shared repository
+      const user = await this.userRepository.validateUserCredentials(name, password);
 
       if (!user) {
         res.status(401).json({
@@ -43,17 +53,6 @@ export class AuthController {
         return;
       }
 
-      // Verify password
-      const isPasswordValid = await bcrypt.compare(password, user.password);
-      
-      if (!isPasswordValid) {
-        res.status(401).json({
-          success: false,
-          message: 'Invalid credentials'
-        });
-        return;
-      }
-
       // Generate JWT token
       const token = jwt.sign(
         { 
@@ -66,7 +65,11 @@ export class AuthController {
       );
 
       // Return user data and token (excluding password)
-      const { password: _, ...userWithoutPassword } = user;
+      const userWithoutPassword = {
+        id: user.id,
+        name: user.name,
+        role: user.role
+      };
       
       res.json({
         success: true,
@@ -75,7 +78,7 @@ export class AuthController {
         token: token
       });
     } catch (error) {
-      console.error('Login error:', error);
+      logger.error('Login error', error as Error);
       res.status(500).json({
         success: false,
         message: 'Internal server error'
@@ -83,33 +86,20 @@ export class AuthController {
     }
   }
 
+  /**
+   * Handles user registration and JWT token generation.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async register(req: Request, res: Response): Promise<void> {
     try {
       const { name, password, role = 'client' } = req.body;
 
-      // Check if user already exists
-      const existingUser = await this.prisma.user.findUnique({
-        where: { name }
-      });
-
-      if (existingUser) {
-        res.status(409).json({
-          success: false,
-          message: 'User already exists'
-        });
-        return;
-      }
-
-      // Hash password
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      // Create user
-      const user = await this.prisma.user.create({
-        data: {
-          name,
-          password: hashedPassword,
-          role
-        }
+      // Create user using the shared repository
+      const user = await this.userRepository.save({
+        name,
+        password,
+        role
       });
 
       // Generate JWT token
@@ -124,7 +114,11 @@ export class AuthController {
       );
 
       // Return user data and token (excluding password)
-      const { password: _, ...userWithoutPassword } = user;
+      const userWithoutPassword = {
+        id: user.id,
+        name: user.name,
+        role: user.role
+      };
       
       res.status(201).json({
         success: true,
@@ -133,7 +127,7 @@ export class AuthController {
         token: token
       });
     } catch (error) {
-      console.error('Registration error:', error);
+      logger.error('Registration error', error as Error);
       res.status(500).json({
         success: false,
         message: 'Internal server error'
@@ -141,6 +135,11 @@ export class AuthController {
     }
   }
 
+  /**
+   * Retrieves the current authenticated user's information.
+   * @param req HTTP request object with user authentication data
+   * @param res HTTP response object
+   */
   async me(req: AuthenticatedRequest, res: Response): Promise<void> {
     try {
       const userId = req.user?.id;
@@ -153,14 +152,7 @@ export class AuthController {
         return;
       }
 
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          name: true,
-          role: true
-        }
-      });
+      const user = await this.userRepository.findById(userId);
 
       if (!user) {
         res.status(404).json({
@@ -170,12 +162,19 @@ export class AuthController {
         return;
       }
 
+      // Return user data without password
+      const userWithoutPassword = {
+        id: user.id,
+        name: user.name,
+        role: user.role
+      };
+
       res.json({
         success: true,
-        data: { user }
+        data: { user: userWithoutPassword }
       });
     } catch (error) {
-      console.error('Get user info error:', error);
+      logger.error('Get user info error', error as Error);
       res.status(500).json({
         success: false,
         message: 'Internal server error'

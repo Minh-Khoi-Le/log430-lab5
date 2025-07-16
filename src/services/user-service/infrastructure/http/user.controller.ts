@@ -1,22 +1,30 @@
 import { Request, Response, Router } from 'express';
-import { PrismaClient } from '@prisma/client';
 import { UserService } from '../../domain/services/user.service';
 import { UserDTO } from '../../application/dtos/user.dto';
-import { PrismaUserRepository } from '../database/prisma-user.repository';
 import { createLogger } from '@shared/infrastructure/logging';
 import { CacheService, createCacheMiddleware } from '@shared/infrastructure/caching';
+import { IUserRepository } from '../../domain/repositories/user.repository';
 
 // Create a logger for the UserController
 const logger = createLogger('user-controller');
 
+/**
+ * HTTP controller for User-related operations.
+ * Handles HTTP requests and responses for user management with caching support.
+ */
 export class UserController {
   private readonly userService: UserService;
   private readonly cacheService: CacheService | undefined;
   public router: Router;
 
-  constructor(cacheService?: CacheService) {
-    const prisma = new PrismaClient();
-    const userRepository = new PrismaUserRepository(prisma);
+  /**
+   * @param cacheService Optional cache service for performance optimization
+   * @param userRepository User repository instance for data operations
+   */
+  constructor(cacheService?: CacheService, userRepository?: IUserRepository) {
+    if (!userRepository) {
+      throw new Error('UserRepository is required');
+    }
     this.userService = new UserService(userRepository);
     this.cacheService = cacheService;
     this.router = Router();
@@ -24,6 +32,9 @@ export class UserController {
     logger.info('UserController initialized');
   }
 
+  /**
+   * Sets up HTTP routes with optional caching middleware.
+   */
   private setupRoutes(): void {
     // Apply cache middleware to GET routes
     if (this.cacheService) {
@@ -46,6 +57,11 @@ export class UserController {
     }
   }
 
+  /**
+   * Retrieves all users.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   public async getAllUsers(req: Request, res: Response): Promise<void> {
     try {
       logger.info('Fetching all users');
@@ -61,6 +77,11 @@ export class UserController {
     }
   }
 
+  /**
+   * Creates a new user.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   public async createUser(req: Request, res: Response): Promise<void> {
     try {
       const userDto: UserDTO = req.body;
@@ -88,6 +109,11 @@ export class UserController {
     }
   }
 
+  /**
+   * Retrieves a user by ID.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   public async getUser(req: Request, res: Response): Promise<void> {
     try {
       const userId = parseInt(req.params['id'] ?? '0');
@@ -105,6 +131,11 @@ export class UserController {
     }
   }
 
+  /**
+   * Updates an existing user.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   public async updateUser(req: Request, res: Response): Promise<void> {
     try {
       const userId = parseInt(req.params['id'] ?? '0');
@@ -132,6 +163,11 @@ export class UserController {
     }
   }
 
+  /**
+   * Deletes a user by ID.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   public async deleteUser(req: Request, res: Response): Promise<void> {
     try {
       const userId = parseInt(req.params['id'] ?? '0');

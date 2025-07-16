@@ -63,7 +63,10 @@ export const API_ENDPOINTS = {
     BASE: "/api/stock",
     BY_PRODUCT: (productId) => `/api/stock/product/${productId}`,
     BY_STORE: (storeId) => `/api/stock/store/${storeId}`,
-    UPDATE: "/api/stock/update"
+    BY_ID: (id) => `/api/stock/${id}`,
+    ADJUST: "/api/stock/adjust",
+    RESERVE: "/api/stock/reserve",
+    LOW: "/api/stock/low"
   },
   
   // Transaction Service endpoints (via Kong)

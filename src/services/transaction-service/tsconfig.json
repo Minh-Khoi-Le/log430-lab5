@@ -14,18 +14,20 @@
     "removeComments": true,
     "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,
-    "baseUrl": "../../",
+    "baseUrl": "./",
     "paths": {
-      "@shared/*": ["shared/*"]
+      "@shared/*": ["../../shared/*"],
+      "@shared/database": ["../../shared/infrastructure/database"],
+      "@shared/infrastructure": ["../../shared/infrastructure"]
     },
     "types": ["jest", "node"]
   },
   "include": [
-    "**/*",
-    "../../shared/**/*"
+    "**/*"
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "../../shared"
   ]
 }

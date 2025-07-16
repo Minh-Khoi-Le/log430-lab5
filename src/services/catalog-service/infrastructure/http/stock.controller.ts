@@ -1,8 +1,20 @@
 import { StockUseCases } from '../../application/use-cases/stock.use-cases';
 
+/**
+ * HTTP controller for Stock-related operations.
+ * Handles HTTP requests and responses for stock management.
+ */
 export class StockController {
+  /**
+   * @param stockUseCases Stock use cases instance for business logic
+   */
   constructor(private readonly stockUseCases: StockUseCases) {}
 
+  /**
+   * Creates a new stock record.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async createStock(req: any, res: any): Promise<void> {
     try {
       const stock = await this.stockUseCases.createStock(req.body);
@@ -12,6 +24,11 @@ export class StockController {
     }
   }
 
+  /**
+   * Retrieves a stock record by its ID.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async getStock(req: any, res: any): Promise<void> {
     try {
       const id = parseInt(req.params.id);
@@ -22,6 +39,11 @@ export class StockController {
     }
   }
 
+  /**
+   * Retrieves all stock records.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async getAllStock(req: any, res: any): Promise<void> {
     try {
       const stocks = await this.stockUseCases.getAllStock();
@@ -31,6 +53,11 @@ export class StockController {
     }
   }
 
+  /**
+   * Updates an existing stock record.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async updateStock(req: any, res: any): Promise<void> {
     try {
       const id = parseInt(req.params.id);
@@ -41,6 +68,11 @@ export class StockController {
     }
   }
 
+  /**
+   * Retrieves stock records by store ID.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async getStockByStore(req: any, res: any): Promise<void> {
     try {
       const storeId = parseInt(req.params.storeId);

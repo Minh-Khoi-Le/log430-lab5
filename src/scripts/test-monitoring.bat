@@ -30,5 +30,5 @@ echo User Service metrics:
 curl -s http://localhost:3001/metrics | findstr "http_requests_total"
 
 echo.
-echo Test complete! Check Grafana dashboard at http://localhost:3000
+echo Test complete! Check Grafana dashboard at http://localhost:3004
 pause

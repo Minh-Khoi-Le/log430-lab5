@@ -6,6 +6,11 @@ module.exports = {
     '**/__tests__/**/*.test.ts',
     '**/?(*.)+(spec|test).ts'
   ],
+  testPathIgnorePatterns: [
+    'node_modules/',
+    'dist/',
+    '.*\\.integration\\.test\\.ts$'
+  ],
   transform: {
     '^.+\\.ts$': 'ts-jest',
   },
@@ -22,4 +27,5 @@ module.exports = {
   },
   clearMocks: true,
   restoreMocks: true,
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
 };

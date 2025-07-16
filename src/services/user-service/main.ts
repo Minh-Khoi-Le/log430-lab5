@@ -2,7 +2,6 @@ import 'module-alias/register';
 import express from 'express';
 import { json } from 'body-parser';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
 import { UserController } from './infrastructure/http/user.controller';
 import { AuthController } from './infrastructure/http/auth.controller';
 import { authenticate } from './infrastructure/middleware/auth.middleware';
@@ -10,14 +9,21 @@ import { createLogger } from '@shared/infrastructure/logging';
 import { requestLogger } from '@shared/infrastructure/http';
 import { redisClient, CacheService, createCacheMiddleware } from '@shared/infrastructure/caching';
 import { register, metricsMiddleware, collectSystemMetrics } from '@shared/infrastructure/metrics';
+import { databaseManager, createHealthRoutes } from '@shared/infrastructure/database';
+import { SharedUserRepository } from './infrastructure/database/shared-user.repository';
 
 // Create a logger for the user service
 const logger = createLogger('user-service');
 
 const app = express();
 const PORT = process.env['PORT'] ?? 3000;
-const prisma = new PrismaClient();
 const SERVICE_NAME = 'user-service';
+
+// Initialize shared database infrastructure
+const userRepository = new SharedUserRepository(databaseManager);
+
+// Initialize database monitoring
+databaseManager.startMonitoring(SERVICE_NAME);
 
 // Initialize system metrics collection
 collectSystemMetrics(SERVICE_NAME);
@@ -52,26 +58,12 @@ app.use(json());
 app.use(requestLogger); // Add request logging middleware
 app.use(metricsMiddleware(SERVICE_NAME)); // Add metrics middleware
 
-// Health check
-app.get('/health', (req, res) => {
-  logger.info('Health check requested');
-  res.json({ status: 'ok', service: 'user-service' });
-});
-
-// Metrics endpoint
-app.get('/metrics', async (req, res) => {
-  try {
-    const metrics = await register.metrics();
-    res.set('Content-Type', register.contentType);
-    res.end(metrics);
-  } catch (error) {
-    res.status(500).end(error);
-  }
-});
+// Add comprehensive health check routes
+app.use('/', createHealthRoutes());
 
 // Routes
-const userController = new UserController(cacheService);
-const authController = new AuthController(prisma);
+const userController = new UserController(cacheService, userRepository);
+const authController = new AuthController(userRepository);
 
 // Authentication routes under /api/auth to match Kong gateway expectations
 app.post('/api/auth/login', (req, res) => {
@@ -116,14 +108,16 @@ app.listen(PORT, () => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down gracefully');
-  await prisma.$disconnect();
+  databaseManager.stopMonitoring();
+  await databaseManager.disconnect();
   await redisClient.disconnect().catch(err => logger.error('Error disconnecting Redis', err as Error));
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   logger.info('SIGINT received, shutting down gracefully');
-  await prisma.$disconnect();
+  databaseManager.stopMonitoring();
+  await databaseManager.disconnect();
   await redisClient.disconnect().catch(err => logger.error('Error disconnecting Redis', err as Error));
   process.exit(0);
 });

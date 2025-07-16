@@ -3,7 +3,7 @@ import { Sale } from '../entities/sale.entity';
 import { SaleLine } from '../entities/sale-line.entity';
 import { Refund } from '../entities/refund.entity';
 import { RefundLine } from '../entities/refund-line.entity';
-import { DomainEvent } from '../../../../shared/domain/events/domain-events';
+import { DomainEvent } from '@shared/domain/events/domain-events';
 
 export class TransactionAggregate {
   private readonly sales: Map<number, Sale> = new Map();

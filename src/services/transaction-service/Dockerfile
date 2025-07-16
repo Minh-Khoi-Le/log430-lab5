@@ -44,9 +44,10 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
-# The compiled JavaScript tries to import from relative paths like ../../shared
-# But we need the shared code to be available where those imports expect it
-# Create the shared directory structure to match the import expectations
+# Copy prisma schema and migrations for runtime (needed for migrations and client)
+COPY --from=builder /app/prisma ./prisma
+
+# Copy shared directory
 RUN mkdir -p shared
 COPY --from=builder /app/dist/shared ./shared
 

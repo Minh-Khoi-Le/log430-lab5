@@ -90,9 +90,12 @@ const History = () => {
     setCurrentTab(newValue);
   };
 
-  // Sort items by date
+  // Sort items by date - excluding refunded sales
   const sortedPurchases = [...purchases]
-    .filter(purchase => (purchase.status || '').toLowerCase() !== 'refunded') // Exclude fully refunded sales, case-insensitive
+    .filter(purchase => {
+      const status = (purchase.status || '').toLowerCase();
+      return status !== 'refunded' && status !== 'fully_refunded';
+    })
     .sort((a, b) => {
       const dateA = new Date(a.date);
       const dateB = new Date(b.date);
@@ -130,7 +133,7 @@ const History = () => {
     
     try {
       console.log('Creating refund via Kong Gateway:', API_ENDPOINTS.REFUNDS.CREATE);
-      // Build refund payload
+      // Build refund payload according to the new shared database structure
       const refundPayload = {
         saleId: refundingSale.id,
         userId: user.id,
@@ -203,14 +206,17 @@ const History = () => {
       API_ENDPOINTS.SALES.BY_CUSTOMER(user.id) + cacheBuster,
       user.token
     );
+    
+    // Handle the new shared database structure
     let purchasesArray = [];
-    if (purchasesResponse && purchasesResponse.data) {
-      if (Array.isArray(purchasesResponse.data)) {
+    if (purchasesResponse) {
+      if (Array.isArray(purchasesResponse)) {
+        purchasesArray = purchasesResponse;
+      } else if (purchasesResponse.data && Array.isArray(purchasesResponse.data)) {
         purchasesArray = purchasesResponse.data;
       }
-    } else if (Array.isArray(purchasesResponse)) {
-      purchasesArray = purchasesResponse;
     }
+    
     return purchasesArray;
   };
 
@@ -220,16 +226,17 @@ const History = () => {
         API_ENDPOINTS.REFUNDS.BY_USER(user.id) + cacheBuster,
         user.token
       );
+      
+      // Handle the new shared database structure
       let refundsArray = [];
-      if (response && response.data) {
-        if (Array.isArray(response.data.refunds)) {
-          refundsArray = response.data.refunds;
-        } else if (Array.isArray(response.data)) {
+      if (response) {
+        if (Array.isArray(response)) {
+          refundsArray = response;
+        } else if (response.data && Array.isArray(response.data)) {
           refundsArray = response.data;
         }
-      } else if (Array.isArray(response)) {
-        refundsArray = response;
       }
+      
       return refundsArray;
     } catch (refundErr) {
       if (refundErr.message.includes('401')) {
@@ -332,7 +339,7 @@ const History = () => {
               <Tab 
                 icon={<UndoIcon />} 
                 iconPosition="start" 
-                label={`Refunds (${refunds.length})`} 
+                label={`Refunds (${sortedRefunds.length})`} 
               />
             </Tabs>
           </Box>
@@ -405,7 +412,7 @@ const History = () => {
                     <Box sx={{ display: "flex", alignItems: "center" }}>
                       <StoreIcon sx={{ mr: 1, fontSize: 18, color: 'text.secondary' }} />
                       <Typography variant="body2" color="text.secondary">
-                        {purchase.store.name}
+                        {purchase.store?.name || 'Unknown store'}
                       </Typography>
                     </Box>
                   </Box>
@@ -417,7 +424,7 @@ const History = () => {
                       Purchased items:
                     </Typography>
                     <List disablePadding>
-                      {purchase.lines.map((line, idx) => (
+                      {purchase.lines?.map((line, idx) => (
                         <ListItem 
                           key={line.productId + '-' + idx} 
                           disablePadding 
@@ -431,7 +438,7 @@ const History = () => {
                             primary={
                               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                 <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                  {line.product.name}
+                                  {line.product?.name || 'Unknown product'}
                                 </Typography>
                                 <Typography variant="body2" color="text.secondary">
                                   ${(line.quantity * line.unitPrice).toFixed(2)}
@@ -445,13 +452,15 @@ const History = () => {
                             }
                           />
                         </ListItem>
-                      ))}
+                      )) || []}
                     </List>
                     
                     {/* Refund Button */}
                     <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
                       {(() => {
-                        if (purchase.status === 'REFUNDED') {
+                        const status = (purchase.status || '').toLowerCase();
+                        
+                        if (status === 'refunded' || status === 'fully_refunded') {
                           return (
                             <Button
                               variant="outlined"
@@ -463,7 +472,7 @@ const History = () => {
                               Already Refunded
                             </Button>
                           );
-                        } else if (purchase.status === 'PARTIALLY_REFUNDED') {
+                        } else if (status === 'partially_refunded' || status === 'partial_refund') {
                           return (
                             <Button
                               variant="outlined"
@@ -535,7 +544,7 @@ const History = () => {
                         Refund #{refund.id}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        For order #{refund.sale.id}
+                        For order #{refund.sale?.id || refund.saleId}
                       </Typography>
                     </Box>
                     <Chip 
@@ -556,7 +565,7 @@ const History = () => {
                     <Box sx={{ display: "flex", alignItems: "center" }}>
                       <StoreIcon sx={{ mr: 1, fontSize: 18, color: 'text.secondary' }} />
                       <Typography variant="body2" color="text.secondary">
-                        {refund.store.name}
+                        {refund.store?.name || 'Unknown store'}
                       </Typography>
                     </Box>
                   </Box>
@@ -591,7 +600,7 @@ const History = () => {
                               primary={
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                                   <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                    {line.product.name}
+                                  {line.product?.name || 'Unknown product'}
                                   </Typography>
                                   <Typography variant="body2" color="text.secondary">
                                     ${(line.quantity * line.unitPrice).toFixed(2)}
@@ -643,7 +652,7 @@ const History = () => {
               {refundingSale && (
                 <>
                   <br /><br />
-                  <strong>Commande #{refundingSale.id}</strong><br />
+                  <strong>Order #{refundingSale.id}</strong><br />
                   Date: {refundingSale ? formatDate(refundingSale.date) : ''}<br />
                   Total: ${refundingSale?.total.toFixed(2)}<br />
                 </>

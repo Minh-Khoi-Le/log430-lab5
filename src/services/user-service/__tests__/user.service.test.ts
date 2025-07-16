@@ -6,9 +6,22 @@ const mockUserRepository = {
   create: jest.fn(),
   findById: jest.fn(),
   findByName: jest.fn(),
+  findAll: jest.fn(),
+  save: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
-  findAll: jest.fn(),
+  exists: jest.fn(),
+  count: jest.fn(),
+  saveMany: jest.fn(),
+  deleteMany: jest.fn(),
+  findWithPagination: jest.fn(),
+  findByRole: jest.fn(),
+  validateUserCredentials: jest.fn(),
+  isNameTaken: jest.fn(),
+  updatePassword: jest.fn(),
+  updateRole: jest.fn(),
+  countByRole: jest.fn(),
+  findActiveUsers: jest.fn(),
 };
 
 describe('CreateUserUseCase', () => {

@@ -22,8 +22,7 @@ import {
   TableRow,
   CircularProgress,
   Alert,
-  Chip,
-  Button
+  Chip
 } from '@mui/material';
 import { Assignment as RefundIcon } from '@mui/icons-material';
 
@@ -52,9 +51,18 @@ function Refunds() {
       
       console.log('Fetching refunds via Kong Gateway:', API_ENDPOINTS.REFUNDS.BASE);
       const response = await authenticatedFetch(API_ENDPOINTS.REFUNDS.BASE, user.token);
-      const refundsData = response.success ? response.data : response;
-      setRefunds(Array.isArray(refundsData) ? refundsData : []);
       
+      // Handle the new shared database structure
+      let refundsData = [];
+      if (response) {
+        if (Array.isArray(response)) {
+          refundsData = response;
+        } else if (response.data && Array.isArray(response.data)) {
+          refundsData = response.data;
+        }
+      }
+      
+      setRefunds(refundsData);
       setLoading(false);
     } catch (err) {
       console.error('Error fetching refunds via Kong Gateway:', err);
@@ -125,7 +133,7 @@ function Refunds() {
                 <TableCell>Customer</TableCell>
                 <TableCell align="right">Amount</TableCell>
                 <TableCell>Status</TableCell>
-                <TableCell>Actions</TableCell>
+                <TableCell>Reason</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -139,37 +147,24 @@ function Refunds() {
                 </TableRow>
               ) : (
                 refunds.map((refund) => {
-                  const getStatusColor = (status) => {
-                    if (status === 'approved') return 'success';
-                    if (status === 'rejected') return 'error';
-                    return 'warning';
-                  };
-
                   return (
                   <TableRow key={refund.id}>
                     <TableCell>#{refund.id}</TableCell>
                     <TableCell>{formatDate(refund.date)}</TableCell>
                     <TableCell>#{refund.saleId}</TableCell>
-                    <TableCell>{refund.customerName || 'Unknown'}</TableCell>
-                    <TableCell align="right">${refund.amount?.toFixed(2) || '0.00'}</TableCell>
+                    <TableCell>{refund.user?.name || refund.customerName || 'Unknown'}</TableCell>
+                    <TableCell align="right">${refund.total?.toFixed(2) || '0.00'}</TableCell>
                     <TableCell>
                       <Chip 
-                        label={refund.status || 'Pending'} 
-                        color={getStatusColor(refund.status)}
+                        label={refund.status || 'Completed'} 
+                        color="success"
                         size="small"
                       />
                     </TableCell>
                     <TableCell>
-                      {refund.status === 'pending' && (
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Button size="small" variant="contained" color="success">
-                            Approve
-                          </Button>
-                          <Button size="small" variant="outlined" color="error">
-                            Reject
-                          </Button>
-                        </Box>
-                      )}
+                      <Typography variant="body2" color="text.secondary">
+                        {refund.reason || 'No reason provided'}
+                      </Typography>
                     </TableCell>
                   </TableRow>
                   );

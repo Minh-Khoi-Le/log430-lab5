@@ -93,12 +93,18 @@ function ProductCreateForm({ onSuccess, onCancel }) {
         body: JSON.stringify(payload),
         headers: { "Content-Type": "application/json" },
       });
-      if (res && (res.success || res.id || res.name)) {
+      console.log("Product creation response:", res);
+      
+      // Check for success more broadly - if we get any valid response with data
+      if (res && (res.success !== false && (res.success || res.id || res.name || res.data || res.product))) {
+        console.log("Product created successfully, calling onSuccess");
         onSuccess && onSuccess();
       } else {
-        setError(res?.error || "Failed to create product.");
+        console.error("Product creation failed:", res);
+        setError(res?.error || res?.message || "Failed to create product.");
       }
     } catch (err) {
+      console.error("Error creating product:", err);
       setError("Failed to create product.");
     }
     setLoading(false);
@@ -196,19 +202,34 @@ function ProductEditForm({ product, stores, onSuccess, onCancel }) {
         body: JSON.stringify({ name, price: parseFloat(price), description }),
         headers: { "Content-Type": "application/json" },
       });
-      // Update or create stocks
+      
+      // Get current stock data to find existing stock IDs
+      const currentStockResponse = await apiFetch(API_ENDPOINTS.STOCK.BY_PRODUCT(product.id));
+      const currentStockData = currentStockResponse.data || currentStockResponse || [];
+      
+      console.log("Current stock data:", currentStockData);
+      console.log("Stocks to update:", stocks);
+      
+      // Update each stock record
       await Promise.all(
-        stocks.map((stock) => {
-          if (stock.id) {
-            // Update existing stock
-            return apiFetch(`/api/stock/${stock.id}`, {
+        stocks.map(async (stock) => {
+          // Find existing stock record by storeId and productId
+          const existingStock = currentStockData.find(
+            (s) => s.storeId === stock.storeId && s.productId === product.id
+          );
+          
+          if (existingStock) {
+            // Update existing stock using the stock ID
+            console.log(`Updating stock ID ${existingStock.id} with quantity ${stock.quantity}`);
+            return apiFetch(API_ENDPOINTS.STOCK.BY_ID(existingStock.id), {
               method: "PUT",
               body: JSON.stringify({ quantity: stock.quantity }),
               headers: { "Content-Type": "application/json" },
             });
           } else {
-            // Create new stock record for this store
-            return apiFetch("/api/stock", {
+            // Create new stock record if it doesn't exist
+            console.log(`Creating new stock for store ${stock.storeId} with quantity ${stock.quantity}`);
+            return apiFetch(API_ENDPOINTS.STOCK.BASE, {
               method: "POST",
               body: JSON.stringify({
                 productId: product.id,
@@ -220,8 +241,10 @@ function ProductEditForm({ product, stores, onSuccess, onCancel }) {
           }
         })
       );
+      
       onSuccess && onSuccess();
     } catch (err) {
+      console.error("Error updating product or stock:", err);
       setError("Failed to update product or stock.");
     }
     setLoading(false);
@@ -323,12 +346,17 @@ function Products() {
       setLoading(true);
       setError("");
 
+      console.log("Fetching products...");
+
       // Fetch both products and stock data in parallel
       try {
         const [productsResponse, stockResponse] = await Promise.all([
           apiFetch(API_ENDPOINTS.PRODUCTS.BASE),
           apiFetch(API_ENDPOINTS.STOCK.BASE),
         ]);
+
+        console.log("Products response:", productsResponse);
+        console.log("Stock response:", stockResponse);
 
         const productsData = productsResponse.success
           ? productsResponse.data
@@ -339,6 +367,9 @@ function Products() {
           ? stockResponse.data
           : stockResponse;
         const inventory = stockData.inventory || stockData;
+
+        console.log("Parsed products:", products);
+        console.log("Parsed inventory:", inventory);
 
         if (Array.isArray(products) && products.length > 0) {
           // Merge stock data with products
@@ -354,8 +385,10 @@ function Products() {
             };
           });
 
+          console.log("Products with stock:", productsWithStock);
           setProducts(productsWithStock);
         } else {
+          console.log("No products from API, using sample data");
           // Fallback to sample data if no products from API
           setProducts(sampleProducts);
         }
@@ -399,6 +432,14 @@ function Products() {
 
   const filterProducts = () => {
     let filtered = products;
+    
+    console.log("Filtering products:", { 
+      totalProducts: products.length, 
+      searchTerm, 
+      selectedCategory, 
+      sortBy, 
+      sortOrder 
+    });
 
     if (searchTerm) {
       filtered = filtered.filter(
@@ -440,6 +481,7 @@ function Products() {
       return 0;
     });
 
+    console.log("Filtered products:", filtered);
     setFilteredProducts(filtered);
   };
 
@@ -537,7 +579,10 @@ function Products() {
               variant="outlined"
               size="small"
               startIcon={<RefreshIcon />}
-              onClick={fetchProducts}
+              onClick={() => {
+                console.log("Manual refresh triggered");
+                fetchProducts();
+              }}
               disabled={loading}
             >
               {loading ? "Refreshing..." : "Refresh"}
@@ -659,9 +704,13 @@ function Products() {
           }}
         >
           <ProductCreateForm
-            onSuccess={() => {
+            onSuccess={async () => {
+              console.log("Product created successfully, refreshing list");
               setShowAddModal(false);
-              fetchProducts();
+              // Add a small delay to ensure the API has processed the creation
+              await new Promise(resolve => setTimeout(resolve, 100));
+              // Force refresh the products list
+              await fetchProducts();
             }}
             onCancel={() => setShowAddModal(false)}
           />

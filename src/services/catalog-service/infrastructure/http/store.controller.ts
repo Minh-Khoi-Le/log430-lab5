@@ -1,8 +1,20 @@
 import { StoreUseCases } from '../../application/use-cases/store.use-cases';
 
+/**
+ * HTTP controller for Store-related operations.
+ * Handles HTTP requests and responses for store management.
+ */
 export class StoreController {
+  /**
+   * @param storeUseCases Store use cases instance for business logic
+   */
   constructor(private readonly storeUseCases: StoreUseCases) {}
 
+  /**
+   * Creates a new store.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async createStore(req: any, res: any): Promise<void> {
     try {
       const store = await this.storeUseCases.createStore(req.body);
@@ -12,6 +24,11 @@ export class StoreController {
     }
   }
 
+  /**
+   * Retrieves a store by its ID.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async getStore(req: any, res: any): Promise<void> {
     try {
       const id = parseInt(req.params.id);
@@ -22,6 +39,11 @@ export class StoreController {
     }
   }
 
+  /**
+   * Retrieves all stores.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async getAllStores(req: any, res: any): Promise<void> {
     try {
       const stores = await this.storeUseCases.getAllStores();
@@ -31,6 +53,11 @@ export class StoreController {
     }
   }
 
+  /**
+   * Updates an existing store.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async updateStore(req: any, res: any): Promise<void> {
     try {
       const id = parseInt(req.params.id);
@@ -41,6 +68,11 @@ export class StoreController {
     }
   }
 
+  /**
+   * Deletes a store by its ID.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async deleteStore(req: any, res: any): Promise<void> {
     try {
       const id = parseInt(req.params.id);

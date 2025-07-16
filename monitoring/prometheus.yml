@@ -40,7 +40,7 @@ scrape_configs:
   # Kong API Gateway
   - job_name: 'kong'
     static_configs:
-      - targets: ['kong:8001']
+      - targets: ['kong:8000']
     metrics_path: '/metrics'
     scrape_interval: 5s
 
@@ -56,8 +56,8 @@ scrape_configs:
       - targets: ['log430-redis-exporter:9121']
     scrape_interval: 5s
 
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets:
-          - alertmanager:9093
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093

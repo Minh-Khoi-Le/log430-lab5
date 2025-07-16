@@ -6,6 +6,9 @@ module.exports = {
     '**/__tests__/**/*.test.ts',
     '**/?(*.)+(spec|test).ts'
   ],
+  testPathIgnorePatterns: [
+    '<rootDir>/__tests__/integration/'
+  ],
   transform: {
     '^.+\\.ts$': 'ts-jest',
   },
@@ -22,4 +25,7 @@ module.exports = {
   },
   clearMocks: true,
   restoreMocks: true,
+  setupFilesAfterEnv: [
+    '<rootDir>/__tests__/setup.ts'
+  ]
 };

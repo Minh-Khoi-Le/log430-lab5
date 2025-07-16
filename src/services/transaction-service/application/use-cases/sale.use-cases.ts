@@ -1,34 +1,45 @@
-import { SaleRepository } from '../../domain/repositories/sale.repository';
+import { ISaleRepository, SaleData } from '../../domain/repositories/sale.repository';
 import { CreateSaleDTO, SaleResponseDTO, SalesSummaryDTO } from '../dtos/sale.dto';
 import { Sale } from '../../domain/entities/sale.entity';
 import { SaleLine } from '../../domain/entities/sale-line.entity';
 import axios from 'axios';
 
+/**
+ * Use case class for managing sale operations (CRUD and business logic).
+ * Handles the creation, retrieval, and processing of sales transactions.
+ */
 export class SaleUseCases {
-  constructor(private readonly saleRepository: SaleRepository) {}
+  /**
+   * @param saleRepository Repository for sale persistence operations
+   */
+  constructor(private readonly saleRepository: ISaleRepository) {}
 
+  /**
+   * Creates a new sale transaction with validation and stock updates.
+   * @param dto Data Transfer Object for sale creation
+   * @returns Promise resolving to the created sale response
+   */
   async createSale(dto: CreateSaleDTO): Promise<SaleResponseDTO> {
     // Calculate total
     const total = dto.lines.reduce((sum, line) => sum + (line.quantity * line.unitPrice), 0);
     
     // Create sale lines
-    const saleLines = dto.lines.map((lineDto, index) => 
-      new SaleLine(lineDto.productId, lineDto.quantity, lineDto.unitPrice, 0, index)
+    const saleLines = dto.lines.map((lineDto) => 
+      new SaleLine(lineDto.productId, lineDto.quantity, lineDto.unitPrice, 0, undefined)
     );
 
-    // Create sale entity
-    const sale = new Sale(
-      0, // ID will be assigned by the database
-      new Date(),
+    // Create sale data for repository
+    const saleData: SaleData = {
+      date: new Date(),
       total,
-      'active',
-      dto.storeId,
-      dto.userId,
-      saleLines
-    );
+      status: 'active',
+      storeId: dto.storeId,
+      userId: dto.userId,
+      lines: saleLines
+    };
 
-    // Save sale
-    const savedSale = await this.saleRepository.save(sale);
+    // Save sale using shared repository with validation
+    const savedSale = await this.saleRepository.save(saleData);
 
     // Update stock for each product sold
     await this.updateStockAfterSale(dto.storeId, dto.lines);
@@ -36,6 +47,11 @@ export class SaleUseCases {
     return this.toResponseDTO(savedSale);
   }
 
+  /**
+   * Retrieves a sale by its ID.
+   * @param id Sale ID
+   * @returns Promise resolving to the sale response
+   */
   async getSale(id: number): Promise<SaleResponseDTO> {
     const sale = await this.saleRepository.findById(id);
     if (!sale) {
@@ -44,13 +60,26 @@ export class SaleUseCases {
     return this.toResponseDTO(sale);
   }
 
+  /**
+   * Retrieves all sales.
+   * @returns Promise resolving to an array of sale responses
+   */
   async getAllSales(): Promise<SaleResponseDTO[]> {
     const sales = await this.saleRepository.findAll();
     return sales.map(sale => this.toResponseDTO(sale));
   }
 
+  /**
+   * Retrieves all sales for a specific user.
+   * @param userId User ID
+   * @returns Promise resolving to an array of sale responses
+   */
   async getSalesByUser(userId: number): Promise<SaleResponseDTO[]> {
-    if (this.saleRepository.findByUserIdWithRelations) {
+    if (this.saleRepository.findByUserIdWithRelationsRaw) {
+      // Use method with raw relations for full data
+      const salesWithRelations = await this.saleRepository.findByUserIdWithRelationsRaw(userId);
+      return salesWithRelations.map(sale => this.toResponseDTOWithRelations(sale));
+    } else if (this.saleRepository.findByUserIdWithRelations) {
       // Use method with relations for full data
       const salesWithRelations = await this.saleRepository.findByUserIdWithRelations(userId);
       return salesWithRelations.map(sale => this.toResponseDTOWithRelations(sale));
@@ -61,22 +90,39 @@ export class SaleUseCases {
     }
   }
 
+  /**
+   * Retrieves all sales for a specific store.
+   * @param storeId Store ID
+   * @returns Promise resolving to an array of sale responses
+   */
   async getSalesByStore(storeId: number): Promise<SaleResponseDTO[]> {
     const sales = await this.saleRepository.findByStoreId(storeId);
     return sales.map(sale => this.toResponseDTO(sale));
   }
 
+  /**
+   * Updates the status of a sale.
+   * @param id Sale ID
+   * @param status New status
+   * @returns Promise resolving to the updated sale response
+   */
   async updateSaleStatus(id: number, status: string): Promise<SaleResponseDTO> {
     const sale = await this.saleRepository.findById(id);
     if (!sale) {
       throw new Error('Sale not found');
     }
 
-    sale.status = status;
-    const updatedSale = await this.saleRepository.update(id, sale);
+    // Use the new repository interface signature
+    const updatedSale = await this.saleRepository.update(id, { status });
     return this.toResponseDTO(updatedSale);
   }
 
+  /**
+   * Gets sales summary statistics for a date range.
+   * @param startDate Start date for the summary period
+   * @param endDate End date for the summary period
+   * @returns Promise resolving to sales summary data
+   */
   async getSalesSummary(startDate: Date, endDate: Date): Promise<SalesSummaryDTO> {
     const sales = await this.saleRepository.findByDateRange(startDate, endDate);
     
@@ -92,6 +138,11 @@ export class SaleUseCases {
     };
   }
 
+  /**
+   * Converts a Sale entity to a SaleResponseDTO.
+   * @param sale Sale entity
+   * @returns Sale response DTO
+   */
   private toResponseDTO(sale: Sale): SaleResponseDTO {
     return {
       id: sale.id,

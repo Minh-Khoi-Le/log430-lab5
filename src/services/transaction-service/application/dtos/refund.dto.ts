@@ -1,11 +1,11 @@
 // Refund Data Transfer Objects
 
 export interface CreateRefundDTO {
-  userId: number;
-  storeId: number;
+  userId?: number;
+  storeId?: number;
   saleId: number;
   reason: string;
-  lines: Array<{
+  lines?: Array<{
     productId: number;
     quantity: number;
     unitPrice: number;

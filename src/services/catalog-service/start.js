@@ -13,10 +13,10 @@ console.log('Starting catalog-service with module aliasing...');
 console.log('Current directory:', __dirname);
 
 // Check if shared directory exists in the container
-if (!fs.existsSync(path.join(__dirname, 'shared'))) {
-  console.error('ERROR: shared directory not found in', __dirname);
+if (!fs.existsSync(path.join(__dirname, 'dist/shared'))) {
+  console.error('ERROR: shared directory not found in', path.join(__dirname, 'dist'));
   // List all directories to help with debugging
-  console.log('Available directories:', fs.readdirSync(__dirname));
+  console.log('Available directories:', fs.readdirSync(path.join(__dirname, 'dist')));
 }
 
 // Register module aliases
@@ -24,20 +24,20 @@ require('module-alias/register');
 
 // Register multiple aliases to handle different import styles
 require('module-alias').addAliases({
-  '@shared': path.join(__dirname, 'shared'),
-  '../../shared': path.join(__dirname, 'shared'),
-  '../shared': path.join(__dirname, 'shared'),
-  '/app/shared': path.join(__dirname, 'shared')
+  '@shared': path.join(__dirname, 'dist/shared'),
+  '../../shared': path.join(__dirname, 'dist/shared'),
+  '../shared': path.join(__dirname, 'dist/shared'),
+  '/app/shared': path.join(__dirname, 'dist/shared')
 });
 
 // Register tsconfig paths
 require('tsconfig-paths').register({
   baseUrl: __dirname,
   paths: {
-    '@shared/*': ['shared/*'],
-    '../../shared/*': ['shared/*'],
-    '../shared/*': ['shared/*'],
-    '/app/shared/*': ['shared/*']
+    '@shared/*': ['dist/shared/*'],
+    '../../shared/*': ['dist/shared/*'],
+    '../shared/*': ['dist/shared/*'],
+    '/app/shared/*': ['dist/shared/*']
   }
 });
 
@@ -47,7 +47,7 @@ try {
   console.log('Attempting to load server.js...');
   require('./dist/server.js');
 } catch (err) {
-  if (err.code === 'MODULE_NOT_FOUND' && err.requireStack && err.requireStack[0] === './dist/server.js') {
+  if (err.code === 'MODULE_NOT_FOUND') {
     try {
       // For user-service
       console.log('server.js not found, trying main.js...');

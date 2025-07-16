@@ -1,31 +1,42 @@
 import { ProductUseCases } from '../application/use-cases/product.use-cases';
-import { ProductRepository } from '../domain/repositories/product.repository';
-import { StoreRepository } from '../domain/repositories/store.repository';
-import { StockRepository } from '../domain/repositories/stock.repository';
+import { IProductRepository } from '../domain/repositories/product.repository';
+import { IStoreRepository } from '../domain/repositories/store.repository';
+import { IStockRepository } from '../domain/repositories/stock.repository';
 import { Product } from '../domain/entities/product.entity';
 import { Store } from '../domain/entities/store.entity';
 import { Stock } from '../domain/entities/stock.entity';
 
 // Mock the repositories
-const mockProductRepository: jest.Mocked<ProductRepository> = {
+const mockProductRepository: jest.Mocked<IProductRepository> = {
   findById: jest.fn(),
   findAll: jest.fn(),
   save: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
   findByName: jest.fn(),
+  findByPriceRange: jest.fn(),
+  exists: jest.fn(),
+  count: jest.fn(),
+  saveMany: jest.fn(),
+  deleteMany: jest.fn(),
+  findWithPagination: jest.fn(),
 };
 
-const mockStoreRepository: jest.Mocked<StoreRepository> = {
+const mockStoreRepository: jest.Mocked<IStoreRepository> = {
   findById: jest.fn(),
   findAll: jest.fn(),
   save: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
   findByName: jest.fn(),
+  exists: jest.fn(),
+  count: jest.fn(),
+  saveMany: jest.fn(),
+  deleteMany: jest.fn(),
+  findWithPagination: jest.fn(),
 };
 
-const mockStockRepository: jest.Mocked<StockRepository> = {
+const mockStockRepository: jest.Mocked<IStockRepository> = {
   findById: jest.fn(),
   findAll: jest.fn(),
   save: jest.fn(),
@@ -35,6 +46,12 @@ const mockStockRepository: jest.Mocked<StockRepository> = {
   findByProductId: jest.fn(),
   findByStoreAndProduct: jest.fn(),
   findLowStock: jest.fn(),
+  adjustStock: jest.fn(),
+  exists: jest.fn(),
+  count: jest.fn(),
+  saveMany: jest.fn(),
+  deleteMany: jest.fn(),
+  findWithPagination: jest.fn(),
 };
 
 describe('ProductUseCases', () => {

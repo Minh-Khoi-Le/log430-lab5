@@ -33,4 +33,19 @@ export class Stock {
   isOutOfStock(): boolean {
     return this.quantity === 0;
   }
+
+  // Factory method to create from plain data
+  static fromData(data: { storeId: number; productId: number; quantity: number }): Omit<Stock, 'id'> {
+    const stock = new Stock(data.storeId, data.productId, data.quantity);
+    return {
+      storeId: stock.storeId,
+      productId: stock.productId,
+      quantity: stock.quantity,
+      updateQuantity: stock.updateQuantity.bind(stock),
+      reserve: stock.reserve.bind(stock),
+      restore: stock.restore.bind(stock),
+      isLowStock: stock.isLowStock.bind(stock),
+      isOutOfStock: stock.isOutOfStock.bind(stock)
+    };
+  }
 }

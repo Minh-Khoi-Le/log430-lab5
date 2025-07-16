@@ -1,5 +1,5 @@
 import { SaleUseCases } from '../application/use-cases/sale.use-cases';
-import { SaleRepository } from '../domain/repositories/sale.repository';
+import { ISaleRepository } from '../domain/repositories/sale.repository';
 import { Sale } from '../domain/entities/sale.entity';
 import { SaleLine } from '../domain/entities/sale-line.entity';
 import axios from 'axios';
@@ -8,8 +8,8 @@ import axios from 'axios';
 jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-// Mock the repository
-const mockSaleRepository: jest.Mocked<SaleRepository> = {
+// Mock the repository - using a partial mock for now to avoid interface issues
+const mockSaleRepository = {
   findById: jest.fn(),
   findAll: jest.fn(),
   save: jest.fn(),
@@ -18,8 +18,8 @@ const mockSaleRepository: jest.Mocked<SaleRepository> = {
   findByUserId: jest.fn(),
   findByStoreId: jest.fn(),
   findByDateRange: jest.fn(),
-  findByUserIdWithRelations: undefined as any, // Don't mock this to force fallback
-};
+  // Don't include findByUserIdWithRelations or findByUserIdWithRelationsRaw - they're optional
+} as jest.Mocked<Partial<ISaleRepository>> as jest.Mocked<ISaleRepository>;
 
 describe('SaleUseCases', () => {
   let saleUseCases: SaleUseCases;
@@ -197,6 +197,8 @@ describe('SaleUseCases', () => {
         new Sale(3, new Date(), 300.0, 'active', 2, 1, [])
       ];
 
+      // Since neither findByUserIdWithRelationsRaw nor findByUserIdWithRelations exist,
+      // it should fall back to findByUserId
       mockSaleRepository.findByUserId.mockResolvedValue(userSales);
 
       const result = await saleUseCases.getSalesByUser(1);

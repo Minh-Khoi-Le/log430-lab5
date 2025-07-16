@@ -6,7 +6,6 @@ This directory contains utility scripts for managing the LOG430 Lab 5 microservi
 
 - `quick-start.bat` - Stops, builds, and starts all backend services (Postgres, Redis, microservices, Kong API Gateway, seeds DB) and automatically launches the web client locally on your machine (not in Docker)
 - `seed-database.bat` - Rebuilds the db-seed image and forcefully reseeds the database with demo data
-- `start-monitoring.bat` - Starts the Prometheus, Grafana, and exporters stack, then launches all application services. Provides URLs for dashboards and metrics.
 - `test-monitoring.bat` - Runs basic checks to verify that Prometheus, Grafana, and service metrics endpoints are up and collecting data.
 - `run-all-tests.bat` - Runs all unit tests for every microservice (User, Catalog, Transaction) and prints a summary of results for each service.
 
@@ -50,20 +49,6 @@ To force a full reseed of the database (clears all data and reloads demo data):
 ```batch
 .\seed-database.bat
 ```
-
-### Start Monitoring Stack
-
-To start the monitoring stack and all services:
-
-```batch
-.\start-monitoring.bat
-```
-
-This will:
-
-- Start Prometheus, Grafana, and exporters
-- Start all application services
-- Print URLs for dashboards and metrics
 
 ### Test Monitoring
 

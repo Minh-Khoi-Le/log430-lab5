@@ -22,4 +22,17 @@ export class Product {
   isValid(): boolean {
     return this.name.length > 0 && this.price >= 0;
   }
+
+  // Factory method to create from plain data
+  static fromData(data: { name: string; price: number; description?: string }): Omit<Product, 'id'> {
+    const product = new Product(0, data.name, data.price, data.description);
+    return {
+      name: product.name,
+      price: product.price,
+      description: product.description,
+      updatePrice: product.updatePrice.bind(product),
+      updateDetails: product.updateDetails.bind(product),
+      isValid: product.isValid.bind(product)
+    };
+  }
 }

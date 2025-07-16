@@ -1,8 +1,20 @@
 import { ProductUseCases } from '../../application/use-cases/product.use-cases';
 
+/**
+ * HTTP controller for Product-related operations.
+ * Handles HTTP requests and responses for product management.
+ */
 export class ProductController {
+  /**
+   * @param productUseCases Product use cases instance for business logic
+   */
   constructor(private readonly productUseCases: ProductUseCases) {}
 
+  /**
+   * Creates a new product.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async createProduct(req: any, res: any): Promise<void> {
     try {
       const product = await this.productUseCases.createProduct(req.body);
@@ -12,6 +24,11 @@ export class ProductController {
     }
   }
 
+  /**
+   * Retrieves a product by its ID.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async getProduct(req: any, res: any): Promise<void> {
     try {
       const id = parseInt(req.params.id);
@@ -22,6 +39,11 @@ export class ProductController {
     }
   }
 
+  /**
+   * Retrieves all products.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async getAllProducts(req: any, res: any): Promise<void> {
     try {
       const products = await this.productUseCases.getAllProducts();
@@ -31,6 +53,11 @@ export class ProductController {
     }
   }
 
+  /**
+   * Updates an existing product.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async updateProduct(req: any, res: any): Promise<void> {
     try {
       const id = parseInt(req.params.id);
@@ -41,6 +68,11 @@ export class ProductController {
     }
   }
 
+  /**
+   * Deletes a product by its ID.
+   * @param req HTTP request object
+   * @param res HTTP response object
+   */
   async deleteProduct(req: any, res: any): Promise<void> {
     try {
       const id = parseInt(req.params.id);

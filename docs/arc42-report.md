@@ -139,7 +139,7 @@ Le système adresse les besoins d'une chaîne de magasins de détail nécessitan
 L'architecture suit une approche **microservices** avec les principes suivants :
 
 1. **Décomposition par Domaine Métier** : Chaque service gère un domaine spécifique
-2. **Base de Données Partagée** : Approche pragmatique pour la cohérence des données
+2. **Infrastructure de Base de Données Centralisée** : Couche d'infrastructure partagée avec respect des frontières de domaine
 3. **API Gateway Centralisé** : Kong pour la gestion des préoccupations transversales
 4. **Surveillance Complète** : Observabilité avec Prometheus et Grafana
 
@@ -683,6 +683,27 @@ logger.info('User login attempt', {
 - Complexité de gestion du cache
 - Cohérence des données
 - Ressource additionnelle
+
+### 9.6 ADR-006 : Infrastructure de Base de Données Centralisée
+
+**Statut** : ACCEPTÉ
+
+**Décision** : Refactoriser l'architecture pour utiliser une infrastructure de base de données centralisée avec des frontières de domaine claires.
+
+**Justification** :
+
+- Standardisation des patterns d'accès aux données
+- Optimisation des connexions et performances
+- Respect des frontières de domaine via des interfaces repository
+- Maintien de la compatibilité API existante
+- Amélioration de l'observabilité et du monitoring
+
+**Conséquences** :
+
+- Dépendance vers l'infrastructure partagée
+- Complexité de migration temporaire
+- Amélioration de la maintenabilité à long terme
+- Patterns d'accès aux données plus cohérents
 
 ---
 

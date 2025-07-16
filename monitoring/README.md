@@ -3,7 +3,9 @@
 This monitoring setup provides comprehen3. **Access the dashboards**:
 
 - Prometheus: <http://localhost:9090>
-- Grafana: <http://localhost:3004> (admin/admin)e observability for the microservices architecture, focusing on the Four Golden Signals of monitoring.
+- Grafana: <http://localhost:3004> (admin/admin)
+
+This monitoring setup provides comprehensive observability for the microservices architecture, focusing on the Four Golden Signals of monitoring.
 
 ## Architecture
 
@@ -14,7 +16,7 @@ This monitoring setup provides comprehen3. **Access the dashboards**:
    - Alert rule evaluation
    - Time-series database
 
-2. **Grafana** (Port 3000)
+2. **Grafana** (Port 3004)
    - Visualization and dashboards
    - Default credentials: admin/admin
 
@@ -69,13 +71,21 @@ The main dashboard focuses on the Four Golden Signals:
 
 ### Database Metrics
 
-- `db_connections` - Active database connections
+- `db_connections_active` - Active database connections
 - `db_query_duration_seconds` - Database query performance
+- `pg_up` - PostgreSQL availability
 
 ### Cache Metrics
 
 - `cache_hits_total` - Cache hit count
 - `cache_misses_total` - Cache miss count
+- `redis_up` - Redis availability
+
+### Kong Gateway Metrics
+
+- `kong_http_requests_total` - Total HTTP requests through Kong
+- `kong_latency_seconds` - Kong request latency
+- `kong_upstream_target_health` - Upstream service health status
 
 ## Setup Instructions
 
@@ -93,7 +103,14 @@ The main dashboard focuses on the Four Golden Signals:
 
 3. **Access the dashboards**:
    - Prometheus: <http://localhost:9090>
-   - Grafana: <http://localhost:3000> (admin/admin)
+   - Grafana: <http://localhost:3004> (admin/admin)
+
+4. **Test the monitoring setup**:
+
+   ```bash
+   # Run the monitoring test script
+   ./test-monitoring.bat
+   ```
 
 ## Alerts
 
@@ -104,6 +121,10 @@ The system includes predefined alerts for:
 - High CPU usage (>80%)
 - High memory usage (>85%)
 - Service downtime
+- Database connection issues
+- High cache miss rates (>80%)
+- Kong upstream service health
+- Redis/PostgreSQL connectivity issues
 
 ## Grafana Dashboard
 
@@ -121,6 +142,15 @@ Each service exposes metrics at:
 - User Service: <http://localhost:3001/metrics>
 - Catalog Service: <http://localhost:3002/metrics>
 - Transaction Service: <http://localhost:3003/metrics>
+- Kong API Gateway: <http://localhost:8000/metrics>
+
+## Database and Cache Metrics
+
+The monitoring setup also includes:
+
+- **PostgreSQL Metrics**: Database performance, connections, queries
+- **Redis Metrics**: Cache hit rates, memory usage, connections
+- **Kong Gateway Metrics**: Request routing, upstream health, latency
 
 ## Troubleshooting
 

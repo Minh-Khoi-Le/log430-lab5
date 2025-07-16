@@ -2,17 +2,17 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
 
-// Import shared caching module
-import { redisClient, CacheService, createCacheMiddleware } from '../../shared/infrastructure/caching';
-import { createLogger } from '../../shared/infrastructure/logging';
-import { register, metricsMiddleware, collectSystemMetrics } from '../../shared/infrastructure/metrics';
+// Import shared infrastructure
+import { redisClient, CacheService, createCacheMiddleware } from '@shared/infrastructure/caching';
+import { createLogger } from '@shared/infrastructure/logging';
+import { register, metricsMiddleware, collectSystemMetrics } from '@shared/infrastructure/metrics';
+import { databaseManager } from '@shared/infrastructure/database/database-manager';
 
-// Import repositories
-import { PrismaProductRepository } from './infrastructure/database/prisma-product.repository';
-import { PrismaStoreRepository } from './infrastructure/database/prisma-store.repository';
-import { PrismaStockRepository } from './infrastructure/database/prisma-stock.repository';
+// Import shared repositories
+import { SharedProductRepository } from './infrastructure/database/shared-product.repository';
+import { SharedStoreRepository } from './infrastructure/database/shared-store.repository';
+import { SharedStockRepository } from './infrastructure/database/shared-stock.repository';
 
 // Import use cases
 import { ProductUseCases } from './application/use-cases/product.use-cases';
@@ -39,25 +39,29 @@ app.use(cors());
 app.use(express.json());
 app.use(metricsMiddleware(SERVICE_NAME));
 
-// Initialize dependencies
-const prisma = new PrismaClient();
-
 // Create a logger for the service
 const logger = createLogger('catalog-service');
 
-// Initialize Redis and Cache Service
-const initializeCache = async () => {
+// Initialize services
+const initializeServices = async () => {
   try {
+    // Initialize cache
     await redisClient.connect();
     logger.info('Redis connected successfully');
   } catch (error) {
     logger.error('Failed to connect to Redis', error as Error);
     logger.warn('Service will operate without caching');
   }
-};
 
-// Call the initialization function
-initializeCache().catch(err => logger.error('Redis initialization error', err as Error));
+  try {
+    // Initialize database
+    await databaseManager.ensureConnection();
+    logger.info('Database connected successfully');
+  } catch (error) {
+    logger.error('Failed to connect to database', error as Error);
+    throw error;
+  }
+};
 
 // Create cache service with proper service name
 const cacheService = new CacheService(redisClient, 'catalog-service');
@@ -73,10 +77,10 @@ const productItemCache = createCacheMiddleware({
   ttl: 600 // 10 minutes
 });
 
-// Repositories
-const productRepository = new PrismaProductRepository(prisma);
-const storeRepository = new PrismaStoreRepository(prisma);
-const stockRepository = new PrismaStockRepository(prisma);
+// Repositories using shared database infrastructure
+const productRepository = new SharedProductRepository(databaseManager);
+const storeRepository = new SharedStoreRepository(databaseManager);
+const stockRepository = new SharedStockRepository(databaseManager);
 
 // Use cases
 const productUseCases = new ProductUseCases(productRepository, storeRepository, stockRepository);
@@ -182,22 +186,33 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Catalog Service running on port ${PORT}`);
-});
+// Start server with proper initialization
+const startServer = async () => {
+  try {
+    await initializeServices();
+    
+    app.listen(PORT, () => {
+      console.log(`Catalog Service running on port ${PORT}`);
+    });
+  } catch (error) {
+    logger.error('Failed to start server', error as Error);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully');
-  await prisma.$disconnect();
+  await databaseManager.disconnect();
   await redisClient.disconnect().catch(err => logger.error('Error disconnecting Redis', err));
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully');
-  await prisma.$disconnect();
+  await databaseManager.disconnect();
   await redisClient.disconnect().catch(err => logger.error('Error disconnecting Redis', err));
   process.exit(0);
 });

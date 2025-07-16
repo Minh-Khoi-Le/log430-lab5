@@ -2,16 +2,17 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
 
-// Import shared caching module
-import { redisClient, CacheService, createCacheMiddleware } from '../../shared/infrastructure/caching';
-import { createLogger } from '../../shared/infrastructure/logging';
-import { register, metricsMiddleware, collectSystemMetrics } from '../../shared/infrastructure/metrics';
+// Import shared infrastructure
+import { redisClient, CacheService, createCacheMiddleware } from '@shared/infrastructure/caching';
+import { createLogger } from '@shared/infrastructure/logging';
+import { register, metricsMiddleware, collectSystemMetrics } from '@shared/infrastructure/metrics';
+import { databaseManager } from '@shared/infrastructure/database/database-manager';
+import { createCrossDomainQueries } from '@shared/infrastructure/database/cross-domain-queries';
 
-// Import repositories
-import { PrismaSaleRepository } from './infrastructure/database/prisma-sale.repository';
-import { PrismaRefundRepository } from './infrastructure/database/prisma-refund.repository';
+// Import new shared repositories
+import { SharedSaleRepository } from './infrastructure/database/shared-sale.repository';
+import { SharedRefundRepository } from './infrastructure/database/shared-refund.repository';
 
 // Import use cases
 import { SaleUseCases } from './application/use-cases/sale.use-cases';
@@ -20,6 +21,9 @@ import { RefundUseCases } from './application/use-cases/refund.use-cases';
 // Import controllers
 import { SaleController } from './infrastructure/http/sale.controller';
 import { RefundController } from './infrastructure/http/refund.controller';
+
+// Import external services
+import { CatalogService } from './infrastructure/services/catalog.service';
 
 dotenv.config();
 
@@ -36,11 +40,19 @@ app.use(cors());
 app.use(express.json());
 app.use(metricsMiddleware(SERVICE_NAME));
 
-// Initialize dependencies
-const prisma = new PrismaClient();
-
 // Create a logger for the service
 const logger = createLogger('transaction-service');
+
+// Initialize shared database infrastructure
+const initializeDatabase = async () => {
+  try {
+    await databaseManager.ensureConnection();
+    logger.info('Shared database infrastructure connected successfully');
+  } catch (error) {
+    logger.error('Failed to connect to shared database infrastructure', error as Error);
+    throw error;
+  }
+};
 
 // Initialize Redis and Cache Service
 const initializeCache = async () => {
@@ -53,8 +65,20 @@ const initializeCache = async () => {
   }
 };
 
-// Call the initialization function
-initializeCache().catch(err => logger.error('Redis initialization error', err as Error));
+// Initialize all services
+const initializeServices = async () => {
+  await initializeDatabase();
+  await initializeCache().catch(err => logger.error('Redis initialization error', err as Error));
+};
+
+// Only initialize services if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  // Call the initialization function
+  initializeServices().catch(err => {
+    logger.error('Service initialization failed', err as Error);
+    process.exit(1);
+  });
+}
 
 // Create cache service with proper service name
 const cacheService = new CacheService(redisClient, 'transaction-service');
@@ -75,13 +99,17 @@ const summaryCache = createCacheMiddleware({
   ttl: 1800 // 30 minutes for summary data which changes less frequently
 });
 
-// Repositories
-const saleRepository = new PrismaSaleRepository(prisma);
-const refundRepository = new PrismaRefundRepository(prisma);
+// Initialize cross-domain queries
+const crossDomainQueries = createCrossDomainQueries(databaseManager);
+
+// Repositories using shared database infrastructure
+const saleRepository = new SharedSaleRepository(databaseManager, crossDomainQueries);
+const refundRepository = new SharedRefundRepository(databaseManager, crossDomainQueries);
 
 // Use cases
+const catalogService = new CatalogService();
 const saleUseCases = new SaleUseCases(saleRepository);
-const refundUseCases = new RefundUseCases(refundRepository, saleRepository);
+const refundUseCases = new RefundUseCases(refundRepository, saleRepository, catalogService);
 
 // Controllers
 const saleController = new SaleController(saleUseCases);
@@ -150,22 +178,24 @@ app.use((err: Error, req: any, res: any, next: any) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Transaction Service running on port ${PORT}`);
-});
+// Start server only if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Transaction Service running on port ${PORT}`);
+  });
+}
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down gracefully');
-  await prisma.$disconnect();
+  await databaseManager.disconnect();
   await redisClient.disconnect().catch((err: Error) => logger.error('Error disconnecting Redis', err));
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   logger.info('SIGINT received, shutting down gracefully');
-  await prisma.$disconnect();
+  await databaseManager.disconnect();
   await redisClient.disconnect().catch((err: Error) => logger.error('Error disconnecting Redis', err));
   process.exit(0);
 });

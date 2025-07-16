@@ -30,7 +30,7 @@ const DEFAULT_OPTIONS: Partial<LoggerOptions> = {
  * Logger class that provides consistent logging across services
  */
 export class Logger {
-  private options: LoggerOptions;
+  private readonly options: LoggerOptions;
 
   constructor(options: LoggerOptions) {
     this.options = {

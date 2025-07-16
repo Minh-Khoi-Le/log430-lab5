@@ -128,7 +128,44 @@ npm start
 npm test
 ```
 
-## Database Schema
+## Database Architecture
+
+The service uses a **centralized database infrastructure** with domain-specific repository patterns:
+
+### Shared Infrastructure
+
+- **Database Manager**: Centralized Prisma client management from `src/shared/infrastructure/database/`
+- **Repository Pattern**: Domain-specific interfaces with shared implementations
+- **Connection Optimization**: Single shared connection pool across all services
+
+### Domain Boundaries
+
+The Catalog Service has access to:
+
+- **Direct Access**: Product, Store, Stock entities
+- **Cross-Domain Access**: None required (maintains strict domain boundaries)
+
+### Repository Interfaces
+
+```typescript
+interface IProductRepository extends IBaseRepository<Product, number> {
+  findByName(name: string): Promise<Product[]>;
+  findByPriceRange(min: number, max: number): Promise<Product[]>;
+}
+
+interface IStoreRepository extends IBaseRepository<Store, number> {
+  findByName(name: string): Promise<Store[]>;
+}
+
+interface IStockRepository extends IBaseRepository<Stock, number> {
+  findByStoreId(storeId: number): Promise<Stock[]>;
+  findByProductId(productId: number): Promise<Stock[]>;
+  findLowStock(threshold: number): Promise<Stock[]>;
+  adjustStock(storeId: number, productId: number, quantity: number): Promise<Stock>;
+}
+```
+
+### Database Schema
 
 The service uses the following Prisma models:
 
@@ -151,16 +188,3 @@ The service provides structured error responses:
 - `400 Bad Request`: Invalid input data
 - `404 Not Found`: Resource not found
 - `500 Internal Server Error`: Server errors
-
-## Monitoring
-
-Health check endpoint: `GET /health`
-
-Returns:
-
-```json
-{
-  "status": "healthy",
-  "service": "catalog-service"
-}
-```

@@ -1,13 +1,13 @@
 import { StockUseCases } from '../application/use-cases/stock.use-cases';
-import { StockRepository } from '../domain/repositories/stock.repository';
-import { ProductRepository } from '../domain/repositories/product.repository';
-import { StoreRepository } from '../domain/repositories/store.repository';
+import { IStockRepository } from '../domain/repositories/stock.repository';
+import { IProductRepository } from '../domain/repositories/product.repository';
+import { IStoreRepository } from '../domain/repositories/store.repository';
 import { Stock } from '../domain/entities/stock.entity';
 import { Product } from '../domain/entities/product.entity';
 import { Store } from '../domain/entities/store.entity';
 
 // Mock the repositories
-const mockStockRepository: jest.Mocked<StockRepository> = {
+const mockStockRepository: jest.Mocked<IStockRepository> = {
   findById: jest.fn(),
   findAll: jest.fn(),
   save: jest.fn(),
@@ -17,24 +17,41 @@ const mockStockRepository: jest.Mocked<StockRepository> = {
   findByProductId: jest.fn(),
   findByStoreAndProduct: jest.fn(),
   findLowStock: jest.fn(),
+  adjustStock: jest.fn(),
+  exists: jest.fn(),
+  count: jest.fn(),
+  saveMany: jest.fn(),
+  deleteMany: jest.fn(),
+  findWithPagination: jest.fn(),
 };
 
-const mockProductRepository: jest.Mocked<ProductRepository> = {
+const mockProductRepository: jest.Mocked<IProductRepository> = {
   findById: jest.fn(),
   findAll: jest.fn(),
   save: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
   findByName: jest.fn(),
+  findByPriceRange: jest.fn(),
+  exists: jest.fn(),
+  count: jest.fn(),
+  saveMany: jest.fn(),
+  deleteMany: jest.fn(),
+  findWithPagination: jest.fn(),
 };
 
-const mockStoreRepository: jest.Mocked<StoreRepository> = {
+const mockStoreRepository: jest.Mocked<IStoreRepository> = {
   findById: jest.fn(),
   findAll: jest.fn(),
   save: jest.fn(),
   update: jest.fn(),
   delete: jest.fn(),
   findByName: jest.fn(),
+  exists: jest.fn(),
+  count: jest.fn(),
+  saveMany: jest.fn(),
+  deleteMany: jest.fn(),
+  findWithPagination: jest.fn(),
 };
 
 describe('StockUseCases', () => {
@@ -163,8 +180,7 @@ describe('StockUseCases', () => {
       const store = new Store(1, 'Test Store', 'Test Address');
       const product = new Product(1, 'Test Product', 99.99, 'Test Description');
 
-      mockStockRepository.findByStoreAndProduct.mockResolvedValue(existingStock);
-      mockStockRepository.update.mockResolvedValue(existingStock);
+      mockStockRepository.adjustStock.mockResolvedValue(existingStock);
       mockStoreRepository.findById.mockResolvedValue(store);
       mockProductRepository.findById.mockResolvedValue(product);
 
@@ -174,7 +190,7 @@ describe('StockUseCases', () => {
 
       expect(result.storeId).toBe(1);
       expect(result.productId).toBe(1);
-      expect(mockStockRepository.update).toHaveBeenCalled();
+      expect(mockStockRepository.adjustStock).toHaveBeenCalledWith(1, 1, 15);
     });
 
     it('should adjust stock quantity for refund', async () => {
@@ -182,8 +198,7 @@ describe('StockUseCases', () => {
       const store = new Store(1, 'Test Store', 'Test Address');
       const product = new Product(1, 'Test Product', 99.99, 'Test Description');
 
-      mockStockRepository.findByStoreAndProduct.mockResolvedValue(existingStock);
-      mockStockRepository.update.mockResolvedValue(existingStock);
+      mockStockRepository.adjustStock.mockResolvedValue(existingStock);
       mockStoreRepository.findById.mockResolvedValue(store);
       mockProductRepository.findById.mockResolvedValue(product);
 
@@ -193,10 +208,11 @@ describe('StockUseCases', () => {
 
       expect(result.storeId).toBe(1);
       expect(result.productId).toBe(1);
+      expect(mockStockRepository.adjustStock).toHaveBeenCalledWith(1, 1, 3);
     });
 
     it('should throw error when stock not found for adjustment', async () => {
-      mockStockRepository.findByStoreAndProduct.mockResolvedValue(null);
+      mockStockRepository.adjustStock.mockRejectedValue(new Error('Stock record not found for store 1 and product 1'));
 
       const adjustmentDto = { storeId: 1, productId: 1, quantity: 5, reason: 'RESTOCK' as const };
 

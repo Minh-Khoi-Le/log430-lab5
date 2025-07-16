@@ -160,7 +160,50 @@ npm start
 npm test
 ```
 
-## Database Schema
+## Database Architecture
+
+The service uses a **centralized database infrastructure** with domain-specific repository patterns:
+
+### Shared Infrastructure
+- **Database Manager**: Centralized Prisma client management from `src/shared/infrastructure/database/`
+- **Repository Pattern**: Domain-specific interfaces with shared implementations
+- **Cross-Domain Queries**: Controlled access to other domains for validation
+- **Connection Optimization**: Single shared connection pool across all services
+
+### Domain Boundaries
+The Transaction Service has access to:
+- **Direct Access**: Sale, SaleLine, Refund, RefundLine entities
+- **Cross-Domain Access**: Read-only validation access to User, Product, Store entities via `ICrossDomainQueries`
+
+### Repository Interfaces
+
+```typescript
+interface ISaleRepository extends IBaseRepository<Sale, number> {
+  findByUserId(userId: number): Promise<Sale[]>;
+  findByStoreId(storeId: number): Promise<Sale[]>;
+  findByDateRange(startDate: Date, endDate: Date): Promise<Sale[]>;
+}
+
+interface IRefundRepository extends IBaseRepository<Refund, number> {
+  findBySaleId(saleId: number): Promise<Refund[]>;
+  findByUserId(userId: number): Promise<Refund[]>;
+  findByStoreId(storeId: number): Promise<Refund[]>;
+}
+```
+
+### Cross-Domain Validation
+
+```typescript
+interface ICrossDomainQueries {
+  validateUserExists(userId: number): Promise<boolean>;
+  validateProductExists(productId: number): Promise<boolean>;
+  validateStoreExists(storeId: number): Promise<boolean>;
+  getProductDetails(productId: number): Promise<ProductDetails | null>;
+  getUserDetails(userId: number): Promise<UserDetails | null>;
+}
+```
+
+### Database Schema
 
 The service uses the following Prisma models:
 
@@ -168,9 +211,9 @@ The service uses the following Prisma models:
 - `SaleLine`: Individual line items in a sale
 - `Refund`: Refund transaction record
 - `RefundLine`: Individual line items in a refund
-- `User`: Customer/user information (referenced)
-- `Store`: Store information (referenced)
-- `Product`: Product information (referenced)
+- `User`: Customer/user information (cross-domain validation only)
+- `Store`: Store information (cross-domain validation only)
+- `Product`: Product information (cross-domain validation only)
 
 ## Integration
 
@@ -200,6 +243,57 @@ The service provides structured error responses:
 2. Check refund amounts don't exceed original sale
 3. Update original sale status (refunded/partially_refunded)
 4. Create refund record with line items
+
+## Best Practices for Domain Boundaries
+
+### Allowed Data Access
+- ✅ Direct access to Sale, SaleLine, Refund, RefundLine entities via respective repositories
+- ✅ Transaction-specific operations (sales processing, refund management)
+- ✅ Cross-domain validation via `ICrossDomainQueries` interface
+- ❌ Direct access to User, Product, Store repositories (use cross-domain queries instead)
+
+### Repository Usage
+```typescript
+// ✅ Correct - Using domain repositories
+const sale = await saleRepository.findById(saleId);
+const userRefunds = await refundRepository.findByUserId(userId);
+
+// ✅ Correct - Cross-domain validation
+const isValidUser = await crossDomainQueries.validateUserExists(userId);
+const productDetails = await crossDomainQueries.getProductDetails(productId);
+
+// ❌ Incorrect - Direct access to other domains
+const user = await userRepository.findById(userId); // Use crossDomainQueries instead
+const product = await productRepository.findById(productId); // Use crossDomainQueries instead
+```
+
+### Cross-Domain Operations
+```typescript
+// Example: Creating a sale with validation
+async createSale(saleData: CreateSaleDto): Promise<Sale> {
+  // Validate cross-domain entities
+  const userExists = await this.crossDomainQueries.validateUserExists(saleData.userId);
+  if (!userExists) {
+    throw new Error('User not found');
+  }
+
+  const storeExists = await this.crossDomainQueries.validateStoreExists(saleData.storeId);
+  if (!storeExists) {
+    throw new Error('Store not found');
+  }
+
+  // Process sale within transaction domain
+  return this.saleRepository.save(saleData);
+}
+```
+
+### Development Guidelines
+1. **Transaction Domain Focus**: Only implement sales and refund-related business logic
+2. **Repository Interfaces**: Always use domain-specific repository interfaces
+3. **Cross-Domain Validation**: Use `ICrossDomainQueries` for validation, never direct repository access
+4. **Transaction Management**: Use proper transaction boundaries for multi-step operations
+5. **Business Rules**: Enforce refund policies and transaction integrity
+6. **Testing**: Mock both domain repositories and cross-domain queries for unit tests
 
 ## Monitoring
 
