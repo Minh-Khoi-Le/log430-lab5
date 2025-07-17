@@ -109,7 +109,17 @@ jobs:
       run: |
         cd src
         docker compose up -d
-        sleep 30  # Wait for services to be ready
+        sleep 60  # Wait longer for services to be ready
+
+    - name: Check service status
+      run: |
+        cd src
+        echo "Checking Docker containers status:"
+        docker compose ps
+        echo "Checking Kong logs:"
+        docker compose logs kong | tail -20
+        echo "Checking catalog-service logs:"
+        docker compose logs catalog-service | tail -20
 
     - name: Install K6
       run: |
@@ -127,13 +137,29 @@ jobs:
 
     - name: Wait for API to be ready
       run: |
-        timeout 120 bash -c 'until curl -f http://localhost:8000/api/stores; do sleep 2; done'
+        # Try Kong admin API first (more reliable)
+        echo "Checking Kong admin API..."
+        timeout 60 bash -c 'until curl -f http://localhost:8001/; do sleep 5; done' || echo "Kong admin API timeout"
+        
+        # Then try the main API endpoint
+        echo "Checking main API endpoint..."
+        timeout 60 bash -c 'until curl -s http://localhost:8000/api/stores; do sleep 5; done' || echo "API endpoint timeout"
+        
+        # Show final status
+        curl -s http://localhost:8000/api/stores || echo "Final API check failed"
 
     - name: Run K6 performance tests
       run: |
-        cd k6
-        k6 run --env BASE_URL=http://localhost:8000 --env API_KEY=frontend-app-key-12345 tests/product-test.js
-        k6 run --env BASE_URL=http://localhost:8000 --env API_KEY=frontend-app-key-12345 tests/comprehensive-test.js
+        # Check if API is responsive before running tests
+        if curl -s -f http://localhost:8000/api/stores > /dev/null; then
+          echo "API is responsive, running K6 tests..."
+          cd k6
+          k6 run --env BASE_URL=http://localhost:8000 --env API_KEY=frontend-app-key-12345 tests/product-test.js
+          k6 run --env BASE_URL=http://localhost:8000 --env API_KEY=frontend-app-key-12345 tests/comprehensive-test.js
+        else
+          echo "API is not responsive, skipping K6 tests"
+          exit 1
+        fi
 
     - name: Cleanup
       run: cd src && docker compose down
