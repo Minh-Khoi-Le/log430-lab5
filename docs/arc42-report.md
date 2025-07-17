@@ -34,6 +34,24 @@
 
 Le système de gestion de magasin de détail développé pour le LOG430 Lab 5 est une application complète basée sur une architecture microservices. Il fournit une solution complète pour la gestion des opérations de vente au détail incluant l'authentification des utilisateurs, le catalogue de produits, le suivi des stocks, les transactions de vente et les fonctionnalités administratives.
 
+![Diagramme de Cas d'Usage](diagrams/png/Diagramme%20CU.png)
+
+Le diagramme de cas d'usage ci-dessus présente les principales fonctionnalités du système organisées par acteur :
+
+**Utilisateur Client :**
+
+- Authentification et gestion de profil
+- Consultation du catalogue de produits
+- Effectuer des achats
+- Consulter l'historique des transactions
+
+**Administrateur :**
+
+- Gestion des produits et du catalogue
+- Gestion des magasins et des stocks
+- Traitement des remboursements
+- Génération de rapports et analytics
+
 ### 1.2 Objectifs de Qualité
 
 | Priorité | Objectif de Qualité | Motivation | Réalisation |
@@ -94,49 +112,15 @@ Le système adresse les besoins d'une chaîne de magasins de détail nécessitan
 
 ### 3.2 Diagramme de Contexte
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│                    Système de Gestion de Magasin                │
-│                         (Architecture 2025)                     │
-│                                                                 │
-│  ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐ │
-│  │   Client Web    │   │   Kong Gateway  │   │   Microservices │ │
-│  │ (React 19 +     │◄──│   (API Gateway) │◄──│   + Centralized │ │
-│  │  Material-UI)   │   │  Rate Limiting  │   │   Database      │ │
-│  │  localhost:5173 │   │  localhost:8000 │   │                 │ │
-│  └─────────────────┘   └─────────────────┘   └─────────────────┘ │
-│                                ▲                                │
-│                                │                                │
-│  ┌─────────────────────────────┼─────────────────────────────┐  │
-│  │                             │                             │  │
-│  │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐    │  │
-│  │  │User Service │   │Catalog Svc  │   │Transaction  │    │  │
-│  │  │   :3001     │   │   :3002     │   │Service :3003│    │  │
-│  │  │(Auth & JWT) │   │(Products &  │   │(Sales &     │    │  │
-│  │  │             │   │ Inventory)  │   │ Refunds)    │    │  │
-│  │  └─────────────┘   └─────────────┘   └─────────────┘    │  │
-│  │                         Microservices                   │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                ▲                                │
-│  ┌─────────────────────────────┼─────────────────────────────┐  │
-│  │                             │                             │  │
-│  │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐    │  │
-│  │  │PostgreSQL 15│   │  Redis 7    │   │ Monitoring  │    │  │
-│  │  │ (Centralisé)│   │ (Cache)     │   │ (Prometheus │    │  │
-│  │  │   :5432     │   │   :6379     │   │ + Grafana)  │    │  │
-│  │  └─────────────┘   └─────────────┘   └─────────────┘    │  │
-│  │                      Infrastructure                     │  │
-│  └─────────────────────────────────────────────────────────┘  │
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐  │
-│  │                     Tests & Validation                  │  │
-│  │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐  │  │
-│  │  │ k6 Load     │   │ Unit Tests  │   │ Integration │  │  │
-│  │  │ Testing     │   │ (Jest)      │   │ Tests       │  │  │
-│  │  └─────────────┘   └─────────────┘   └─────────────┘  │  │
-│  └─────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-```
+![Architecture Système](diagrams/png/Architecture%20Système.png)
+
+Le diagramme ci-dessus illustre l'architecture globale du système de gestion de magasin avec ses composants principaux :
+
+- **Client Web** (React 19 + Material-UI) sur localhost:5173
+- **Kong Gateway** (API Gateway) sur localhost:8000 avec rate limiting
+- **Microservices** : User Service (:3001), Catalog Service (:3002), Transaction Service (:3003)
+- **Infrastructure** : PostgreSQL 15 (:5432), Redis 7 (:6379), Monitoring (Prometheus + Grafana)
+- **Tests & Validation** : k6 Load Testing, Unit Tests (Jest), Integration Tests
 
 ### 3.3 Frontières du Système
 
@@ -313,6 +297,10 @@ L'implémentation utilise une **infrastructure de base de données centralisée*
 
 #### 5.2.2 Modèle de Données Complet
 
+![Modèle de Domaine](diagrams/png/MDD%20Magasin.png)
+
+Le modèle de domaine ci-dessus illustre les entités principales et leurs relations dans le système de gestion de magasin. Le schéma Prisma correspondant est le suivant :
+
 ```prisma
 // Utilisateur du système avec rôles
 model User {
@@ -440,7 +428,9 @@ model RefundLine {
 
 ### 5.3 Architecture Interne des Services
 
-Chaque microservice suit le pattern **Clean Architecture** avec infrastructure partagée :
+![Diagramme de Classes](diagrams/png/Diagramme%20de%20classes.png)
+
+Chaque microservice suit le pattern **Clean Architecture** avec infrastructure partagée, comme illustré dans le diagramme de classes ci-dessus :
 
 ```typescript
 services/[service-name]/
@@ -487,72 +477,39 @@ src/shared/infrastructure/
 
 ### 6.1 Scénario : Authentification Utilisateur
 
-```mermaid
-sequenceDiagram
-    participant C as Client Web
-    participant K as Kong Gateway
-    participant U as User Service
-    participant DB as PostgreSQL
-    participant R as Redis
+![RDCU Authentification](diagrams/png/RDCU%20Vente.png)
 
-    C->>K: POST /api/auth/login
-    K->>U: Routage vers User Service
-    U->>DB: Vérification credentials
-    DB-->>U: Données utilisateur
-    U->>U: Génération JWT
-    U->>R: Cache session
-    U-->>K: JWT + données utilisateur
-    K-->>C: Réponse authentification
-```
+Le diagramme de séquence ci-dessus illustre le processus d'authentification utilisateur :
+
+1. Le client web envoie une requête de connexion via Kong Gateway
+2. Kong route la requête vers le User Service
+3. Le User Service vérifie les credentials dans PostgreSQL
+4. Génération et cache du JWT dans Redis
+5. Retour de la réponse d'authentification avec le token
 
 ### 6.2 Scénario : Achat de Produit
 
-```mermaid
-sequenceDiagram
-    participant C as Client Web
-    participant K as Kong Gateway
-    participant CS as Catalog Service
-    participant TS as Transaction Service
-    participant DB as PostgreSQL
-    participant R as Redis
+![RDCU Vente](diagrams/png/RDCU%20Vente.png)
 
-    C->>K: POST /api/sales (JWT)
-    K->>K: Validation JWT
-    K->>TS: Routage vers Transaction Service
-    TS->>CS: Vérification stock
-    CS->>DB: Lecture inventaire
-    DB-->>CS: Stock disponible
-    CS-->>TS: Confirmation stock
-    TS->>DB: Création transaction
-    TS->>CS: Mise à jour stock
-    CS->>DB: Décrément inventaire
-    CS->>R: Invalidation cache
-    TS-->>K: Confirmation vente
-    K-->>C: Réponse succès
-```
+Le processus de vente implique une coordination entre plusieurs services :
+
+1. Validation JWT par Kong Gateway
+2. Routage vers Transaction Service
+3. Vérification du stock via Catalog Service
+4. Création de la transaction
+5. Mise à jour de l'inventaire et invalidation du cache
+6. Confirmation de la vente au client
 
 ### 6.3 Scénario : Génération de Rapport
 
-```mermaid
-sequenceDiagram
-    participant C as Client Web (Admin)
-    participant K as Kong Gateway
-    participant CS as Catalog Service
-    participant TS as Transaction Service
-    participant DB as PostgreSQL
+![RDCU Remboursement](diagrams/png/RDCU%20Remboursement.png)
 
-    C->>K: GET /api/analytics/dashboard
-    K->>CS: Routage vers Catalog Service
-    CS->>DB: Requête agrégation ventes
-    CS->>TS: Requête données transactions
-    TS->>DB: Lecture historique
-    DB-->>TS: Données transactions
-    TS-->>CS: Métriques financières
-    DB-->>CS: Données inventaire
-    CS->>CS: Génération rapport
-    CS-->>K: Données dashboard
-    K-->>C: Rapport complet
-```
+Le processus de génération de rapport pour les administrateurs :
+
+1. Requête dashboard via Kong Gateway
+2. Routage vers Catalog Service
+3. Agrégation des données de vente et transaction
+4. Compilation et retour du rapport complet
 
 ---
 
@@ -560,40 +517,30 @@ sequenceDiagram
 
 ### 7.1 Architecture de Déploiement
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Docker Host                              │
-│                                                                 │
-│  ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐ │
-│  │   Frontend      │   │   Kong Gateway  │   │   Monitoring    │ │
-│  │   (Local)       │   │   Container     │   │   Stack         │ │
-│  │  localhost:5173 │   │  localhost:8000 │   │                 │ │
-│  └─────────────────┘   └─────────────────┘   │ ┌─────────────┐ │ │
-│                                               │ │ Prometheus  │ │ │
-│  ┌─────────────────────────────────────────┐ │ │   :9090     │ │ │
-│  │           Microservices Network         │ │ └─────────────┘ │ │
-│  │                                         │ │                 │ │
-│  │  ┌─────────────┐   ┌─────────────┐    │ │ ┌─────────────┐ │ │
-│  │  │User Service │   │Catalog Svc  │    │ │ │  Grafana    │ │ │
-│  │  │   :3001     │   │   :3002     │    │ │ │   :3004     │ │ │
-│  │  └─────────────┘   └─────────────┘    │ │ └─────────────┘ │ │
-│  │                                         │ └─────────────────┘ │
-│  │  ┌─────────────┐                       │                     │
-│  │  │Transaction  │                       │                     │
-│  │  │Service :3003│                       │                     │
-│  │  └─────────────┘                       │                     │
-│  └─────────────────────────────────────────┘                     │
-│                                                                 │
-│  ┌─────────────────────────────────────────┐                     │
-│  │           Data Layer                    │                     │
-│  │                                         │                     │
-│  │  ┌─────────────┐   ┌─────────────┐    │                     │
-│  │  │PostgreSQL   │   │   Redis     │    │                     │
-│  │  │   :5432     │   │   :6379     │    │                     │
-│  │  └─────────────┘   └─────────────┘    │                     │
-│  └─────────────────────────────────────────┘                     │
-└─────────────────────────────────────────────────────────────────┘
-```
+![Diagramme de Déploiement](diagrams/png/Diagramme%20de%20deploiement.png)
+
+Le diagramme de déploiement ci-dessus montre l'organisation des conteneurs Docker :
+
+**Niveau Frontend :**
+
+- Client Web (React) en développement local sur localhost:5173
+- Kong Gateway exposé sur localhost:8000 comme point d'entrée unique
+
+**Niveau Microservices :**
+
+- User Service sur port 3001 (authentification et gestion utilisateurs)
+- Catalog Service sur port 3002 (produits et inventaire)  
+- Transaction Service sur port 3003 (ventes et remboursements)
+
+**Niveau Infrastructure :**
+
+- PostgreSQL 15 sur port 5432 (base de données centralisée)
+- Redis 7 sur port 6379 (cache et sessions)
+
+**Niveau Monitoring :**
+
+- Prometheus sur port 9090 (collecte de métriques)
+- Grafana sur port 3004 (dashboards et visualisation)
 
 ### 7.2 Configuration Docker Compose
 
@@ -1032,8 +979,7 @@ export default function() {
 
 1. **Implémentation des tests unitaires** (Coverage > 80%)
 2. **Configuration HTTPS** pour la production
-3. **Gestion des secrets** avec Docker Secrets
-4. **Alerting avancé** avec Prometheus AlertManager
+3. **Alerting avancé** avec Prometheus AlertManager
 
 ---
 
@@ -1083,6 +1029,24 @@ export default function() {
 
 ---
 
+## Annexes
+
+### Diagrammes Disponibles
+
+Tous les diagrammes de ce rapport sont disponibles sous forme d'images PNG dans le dossier `docs/diagrams/png/` :
+
+- **Architecture Système.png** : Vue d'ensemble de l'architecture complète du système
+- **Diagramme CU.png** : Diagramme de cas d'usage montrant les fonctionnalités par acteur
+- **Diagramme de classes.png** : Structure des classes et relations dans l'architecture Clean
+- **Diagramme de deploiement.png** : Organisation des conteneurs Docker et déploiement
+- **MDD Magasin.png** : Modèle de domaine métier avec entités et relations
+- **RDCU Remboursement.png** : Séquence de traitement des remboursements
+- **RDCU Vente.png** : Séquence de traitement des ventes
+
+Les sources PlantUML correspondantes sont également disponibles dans `docs/diagrams/` pour modification.
+
+---
+
 ## Conclusion
 
 Ce rapport Arc42 présente une architecture microservices complète pour un système de gestion de magasin de détail. L'architecture privilégie l'observabilité, la performance et la maintenabilité tout en respectant les contraintes du projet académique.
@@ -1093,4 +1057,4 @@ Les risques identifiés et les dettes techniques fournissent une roadmap claire 
 
 **Auteur** : Minh Khoi Le
 **Date** : 2025-07-16
-**Version** : 2.0
+**Version** : 3.0
