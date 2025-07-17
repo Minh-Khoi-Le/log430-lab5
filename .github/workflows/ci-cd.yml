@@ -45,14 +45,8 @@ jobs:
       with:
         node-version: 20
 
-    - name: Install main dependencies
+    - name: Install all dependencies (including workspaces)
       run: cd src && npm ci
-
-    - name: Install services dependencies
-      run: |
-        cd src/services/catalog-service && npm ci
-        cd ../user-service && npm ci
-        cd ../transaction-service && npm ci
 
     - name: Generate Prisma client & migrate
       run: |
