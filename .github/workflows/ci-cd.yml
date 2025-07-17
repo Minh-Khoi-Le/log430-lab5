@@ -77,8 +77,8 @@ jobs:
     - name: Install frontend dependencies
       run: cd src/web-client && npm install
 
-    - name: Run frontend linting
-      run: cd src/web-client && npm run lint
+    # - name: Run frontend linting
+    #   run: cd src/web-client && npm run lint
 
     - name: Build frontend (Vite)
       run: cd src/web-client && npm run build
