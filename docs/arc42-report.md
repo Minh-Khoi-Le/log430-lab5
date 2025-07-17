@@ -25,13 +25,14 @@ Le système de gestion de magasin de détail développé pour le LOG430 Lab 5 es
 
 ### 1.2 Objectifs de Qualité
 
-| Priorité | Objectif de Qualité | Motivation |
-|----------|---------------------|------------|
-| 1 | **Observabilité** | Surveillance complète avec Prometheus et Grafana pour comprendre le comportement du système |
-| 2 | **Évolutivité** | Architecture microservices permettant la mise à l'échelle indépendante des services |
-| 3 | **Maintenabilité** | Code TypeScript avec architecture DDD et patterns Clean Architecture |
-| 4 | **Performance** | Mise en cache Redis et tests de charge k6 pour optimiser les performances |
-| 5 | **Sécurité** | Authentification JWT et contrôle d'accès via Kong Gateway |
+| Priorité | Objectif de Qualité | Motivation | Réalisation |
+|----------|---------------------|------------|-------------|
+| 1 | **Observabilité** | Surveillance complète avec Prometheus et Grafana pour comprendre le comportement du système | Monitoring des Four Golden Signals, métriques personnalisées, dashboards temps réel |
+| 2 | **Performance** | Optimisation des temps de réponse et gestion de la charge | Caching Redis multiniveau, architecture centralisée de base de données, tests de charge k6 |
+| 3 | **Évolutivité** | Architecture microservices permettant la mise à l'échelle indépendante des services | Décomposition par domaine métier, API Gateway Kong, conteneurisation Docker |
+| 4 | **Maintenabilité** | Code TypeScript avec architecture DDD et patterns Clean Architecture | Structure modulaire, séparation des responsabilités, documentation Arc42 complète |
+| 5 | **Sécurité** | Authentification JWT et contrôle d'accès via Kong Gateway | API Keys, rate limiting, validation des requêtes, CORS configuré |
+| 6 | **Fiabilité** | Système stable avec gestion d'erreurs et validation robuste | Validation cross-domain, transactions ACID, gestion gracieuse des pannes |
 
 ### 1.3 Parties Prenantes
 
@@ -82,14 +83,16 @@ Le système adresse les besoins d'une chaîne de magasins de détail nécessitan
 
 ### 3.2 Diagramme de Contexte
 
-``` text
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Système de Gestion de Magasin                │
+│                         (Architecture 2025)                     │
 │                                                                 │
 │  ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐ │
-│  │   Client Web    │   │   Monitoring    │   │   Kong Gateway  │ │
-│  │   (React)       │◄──│   (Prometheus)  │◄──│   (API Gateway) │ │
-│  │  localhost:5173 │   │  localhost:9090 │   │  localhost:8000 │ │
+│  │   Client Web    │   │   Kong Gateway  │   │   Microservices │ │
+│  │ (React 19 +     │◄──│   (API Gateway) │◄──│   + Centralized │ │
+│  │  Material-UI)   │   │  Rate Limiting  │   │   Database      │ │
+│  │  localhost:5173 │   │  localhost:8000 │   │                 │ │
 │  └─────────────────┘   └─────────────────┘   └─────────────────┘ │
 │                                ▲                                │
 │                                │                                │
@@ -98,6 +101,8 @@ Le système adresse les besoins d'une chaîne de magasins de détail nécessitan
 │  │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐    │  │
 │  │  │User Service │   │Catalog Svc  │   │Transaction  │    │  │
 │  │  │   :3001     │   │   :3002     │   │Service :3003│    │  │
+│  │  │(Auth & JWT) │   │(Products &  │   │(Sales &     │    │  │
+│  │  │             │   │ Inventory)  │   │ Refunds)    │    │  │
 │  │  └─────────────┘   └─────────────┘   └─────────────┘    │  │
 │  │                         Microservices                   │  │
 │  └─────────────────────────────────────────────────────────┘  │
@@ -105,10 +110,19 @@ Le système adresse les besoins d'une chaîne de magasins de détail nécessitan
 │  ┌─────────────────────────────┼─────────────────────────────┐  │
 │  │                             │                             │  │
 │  │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐    │  │
-│  │  │PostgreSQL   │   │   Redis     │   │   Grafana   │    │  │
-│  │  │   :5432     │   │   :6379     │   │   :3004     │    │  │
+│  │  │PostgreSQL 15│   │  Redis 7    │   │ Monitoring  │    │  │
+│  │  │ (Centralisé)│   │ (Cache)     │   │ (Prometheus │    │  │
+│  │  │   :5432     │   │   :6379     │   │ + Grafana)  │    │  │
 │  │  └─────────────┘   └─────────────┘   └─────────────┘    │  │
 │  │                      Infrastructure                     │  │
+│  └─────────────────────────────────────────────────────────┘  │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐  │
+│  │                     Tests & Validation                  │  │
+│  │  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐  │  │
+│  │  │ k6 Load     │   │ Unit Tests  │   │ Integration │  │  │
+│  │  │ Testing     │   │ (Jest)      │   │ Tests       │  │  │
+│  │  └─────────────┘   └─────────────┘   └─────────────┘  │  │
 │  └─────────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -136,32 +150,64 @@ Le système adresse les besoins d'une chaîne de magasins de détail nécessitan
 
 ### 4.1 Approche Architecturale
 
-L'architecture suit une approche **microservices** avec les principes suivants :
+L'architecture suit une approche **microservices moderne** avec infrastructure centralisée, intégrant les principes suivants :
 
-1. **Décomposition par Domaine Métier** : Chaque service gère un domaine spécifique
-2. **Infrastructure de Base de Données Centralisée** : Couche d'infrastructure partagée avec respect des frontières de domaine
-3. **API Gateway Centralisé** : Kong pour la gestion des préoccupations transversales
-4. **Surveillance Complète** : Observabilité avec Prometheus et Grafana
+1. **Décomposition par Domaine Métier** : Chaque service gère un domaine spécifique (User, Catalog, Transaction)
+2. **Infrastructure de Base de Données Centralisée** : PostgreSQL partagé avec frontières de domaine strictes et validation cross-domain
+3. **API Gateway Centralisé** : Kong pour la gestion des préoccupations transversales (sécurité, monitoring, rate limiting)
+4. **Surveillance Complète** : Observabilité avec Prometheus, Grafana et Four Golden Signals
+5. **Stratégie de Cache Multiniveau** : Redis avec invalidation automatique et stratégies spécifiques par service
+6. **Tests de Performance Intégrés** : Suite k6 complète avec scénarios multiples (spike, stress, e2e)
 
 ### 4.2 Patterns Architecturaux Principaux
 
-| Pattern | Application | Bénéfices |
-|---------|-------------|-----------|
-| **Microservices** | Décomposition en services indépendants | Évolutivité, maintenabilité |
-| **API Gateway** | Kong pour le routage centralisé | Sécurité, surveillance |
-| **Domain-Driven Design** | Structure interne des services | Cohérence métier |
-| **Clean Architecture** | Séparation des couches | Testabilité, flexibilité |
-| **CQRS** | Séparation lecture/écriture | Performance, évolutivité |
+| Pattern | Application | Bénéfices | Implémentation |
+|---------|-------------|-----------|----------------|
+| **Microservices** | Décomposition en 3 services indépendants | Évolutivité, maintenabilité, déploiement indépendant | User, Catalog, Transaction services avec domaines métier bien définis |
+| **API Gateway** | Kong pour le routage centralisé | Sécurité, surveillance, gestion du trafic | Rate limiting (300/min), API keys, métriques Prometheus |
+| **Domain-Driven Design** | Structure interne des services | Cohérence métier, séparation des responsabilités | Entities, Use Cases, Repositories par domaine |
+| **Clean Architecture** | Séparation des couches | Testabilité, flexibilité, indépendance des frameworks | Domain → Application → Infrastructure |
+| **CQRS Léger** | Séparation lecture/écriture | Performance, optimisation des requêtes | Repositories spécialisés avec cache pour les lectures |
+| **Centralized Database** | Base de données partagée avec frontières | Performance optimisée, cohérence ACID | Connection pooling, validation cross-domain |
+| **Cache-Aside** | Stratégie de mise en cache | Réduction latence, amélioration throughput | Redis avec TTL et invalidation automatique |
 
 ### 4.3 Technologies Clés
 
-- **Backend** : Node.js 18+, TypeScript, Express.js
-- **Frontend** : React 19, Material-UI v7, Vite 6
-- **Base de Données** : PostgreSQL 15, Prisma ORM v5
-- **Cache** : Redis 7 pour les performances
-- **Surveillance** : Prometheus, Grafana, Four Golden Signals
-- **Tests** : k6 pour les tests de charge
-- **Containerisation** : Docker, Docker Compose
+**Frontend & Interface Utilisateur :**
+
+- **React 19** avec **Vite 6** pour un développement moderne et performant
+- **Material-UI v7** pour une interface utilisateur cohérente et accessible
+- **React Router DOM v7** pour la navigation client-side
+- **Recharts** pour la visualisation de données et l'analytics
+- **jsPDF** pour la génération de rapports PDF
+
+**Backend & Microservices :**
+
+- **Node.js 18+** avec **TypeScript** pour la robustesse et la maintenabilité
+- **Express.js** comme framework web léger et performant
+- **Domain-Driven Design (DDD)** pour l'organisation du code métier
+- **Clean Architecture** avec injection de dépendances
+- **Prisma ORM v5** pour l'accès type-safe à la base de données
+
+**Infrastructure & Données :**
+
+- **PostgreSQL 15** comme base de données relationnelle ACID
+- **Redis 7** pour le cache distribué et la gestion de session
+- **Kong Gateway** pour l'API Gateway avec sécurité intégrée
+- **Docker & Docker Compose** pour la conteneurisation
+
+**Observabilité & Monitoring :**
+
+- **Prometheus** pour la collecte de métriques
+- **Grafana** pour la visualisation et les dashboards
+- **Four Golden Signals** (Latency, Traffic, Errors, Saturation)
+- **Exporters** spécialisés (Node, PostgreSQL, Redis)
+
+**Tests & Qualité :**
+
+- **k6** pour les tests de charge et performance
+- **Jest** pour les tests unitaires et d'intégration
+- **Scénarios multiples** : spike, stress, endurance, e2e
 
 ---
 
@@ -173,115 +219,255 @@ L'architecture suit une approche **microservices** avec les principes suivants :
 
 **Responsabilités :**
 
-- Authentification et autorisation
-- Gestion des profils utilisateur
-- Gestion des tokens JWT
-- Contrôle d'accès basé sur les rôles (admin/client)
+- Authentification et autorisation avec JWT
+- Gestion des profils utilisateur et rôles (admin/client)
+- Validation des tokens et sessions
+- Contrôle d'accès basé sur les rôles
+- Interface avec l'infrastructure de base de données centralisée
 
 **API Endpoints :**
 
-- `POST /api/auth/login` - Connexion utilisateur
-- `POST /api/auth/register` - Inscription utilisateur
-- `GET /api/users/profile` - Profil utilisateur
+- `POST /api/auth/login` - Connexion utilisateur avec génération JWT
+- `POST /api/auth/register` - Inscription utilisateur avec validation
+- `GET /api/users/profile` - Profil utilisateur authentifié
+- `GET /api/users` - Liste des utilisateurs (admin seulement)
+- `PUT /api/users/:id` - Mise à jour profil utilisateur
+
+**Accès aux Données :**
+
+- **Direct** : Entités User uniquement
+- **Cross-Domain** : Aucun accès direct aux autres domaines
 
 #### 5.1.2 Catalog Service (Port 3002)
 
 **Responsabilités :**
 
-- Gestion du catalogue de produits
-- Gestion des informations de magasin
-- Suivi des stocks d'inventaire
-- Agrégation d'analyses pour le tableau de bord
+- Gestion du catalogue de produits complet
+- Gestion des informations de magasin et localisations
+- Suivi des stocks d'inventaire en temps réel
+- Réservation de stock pour les ventes
+- Optimisation des requêtes avec cache Redis
+- Analytics et rapports d'inventaire
 
 **API Endpoints :**
 
-- `GET /api/products` - Liste des produits
-- `POST /api/products` - Création de produit
-- `GET /api/stock/:storeId` - Stock par magasin
-- `PUT /api/stock/:storeId/:productId` - Mise à jour stock
+- `GET /api/products` - Liste des produits (avec cache)
+- `POST /api/products` - Création de produit (admin)
+- `GET /api/products/search` - Recherche de produits
+- `GET /api/stores` - Liste des magasins (endpoint public)
+- `GET /api/stock/store/:storeId` - Stock par magasin
+- `POST /api/stock/reserve` - Réservation de stock
+- `POST /api/stock/adjust` - Ajustement d'inventaire
+
+**Accès aux Données :**
+
+- **Direct** : Entités Product, Store, Stock
+- **Cross-Domain** : Validation User pour les opérations admin
 
 #### 5.1.3 Transaction Service (Port 3003)
 
 **Responsabilités :**
 
-- Traitement des transactions de vente
-- Gestion des remboursements
-- Historique des transactions
-- Génération de rapports financiers
+- Traitement des transactions de vente avec validation complète
+- Gestion des remboursements avec règles métier
+- Historique des transactions par utilisateur et magasin
+- Communication avec Catalog Service pour mise à jour stock
+- Génération de rapports financiers et analytics
+- Validation cross-domain pour utilisateurs, produits et magasins
 
 **API Endpoints :**
 
-- `POST /api/sales` - Nouvelle vente
-- `GET /api/sales/:userId` - Historique des ventes
+- `POST /api/sales` - Nouvelle vente avec validation complète
+- `GET /api/sales/user/:userId` - Historique des ventes utilisateur
+- `GET /api/sales/store/:storeId` - Ventes par magasin
+- `GET /api/sales/summary` - Résumé des ventes avec métriques
 - `POST /api/refunds` - Demande de remboursement
-- `GET /api/refunds/:userId` - Historique des remboursements
+- `PUT /api/sales/:id/status` - Mise à jour statut vente
 
-### 5.2 Modèle de Données
+**Accès aux Données :**
 
-#### 5.2.1 Entités Principales
+- **Direct** : Entités Sale, SaleLine, Refund, RefundLine
+- **Cross-Domain** : Validation User, Product, Store via ICrossDomainQueries
+
+### 5.2 Architecture de Base de Données Centralisée
+
+#### 5.2.1 Principe d'Architecture
+
+L'implémentation utilise une **infrastructure de base de données centralisée** avec les caractéristiques suivantes :
+
+- **Connection Pool Partagé** : Une seule instance Prisma Client optimisée
+- **Frontières de Domaine Strictes** : Accès contrôlé par service via repositories spécialisés
+- **Validation Cross-Domain** : Interface `ICrossDomainQueries` pour les validations inter-services
+- **Performance Optimisée** : Réduction de la surcharge de connexion et optimisation des requêtes
+
+#### 5.2.2 Modèle de Données Complet
 
 ```prisma
-// Magasin physique
+// Utilisateur du système avec rôles
+model User {
+  id       Int     @id @default(autoincrement())
+  name     String  @unique
+  role     String  @default("client") // "admin" | "client"
+  password String  // Hash bcrypt
+  sales    Sale[]   // Relation vers les ventes
+  refunds  Refund[] // Relation vers les remboursements
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Magasin physique avec localisation
 model Store {
   id      Int      @id @default(autoincrement())
-  name    String
-  address String?
-  stocks  Stock[]
-  sales   Sale[]
-  refunds Refund[]
+  name    String   @unique
+  address String?  // Adresse physique du magasin
+  stocks  Stock[]  // Inventaire du magasin
+  sales   Sale[]   // Ventes dans ce magasin
+  refunds Refund[] // Remboursements traités dans ce magasin
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // Produit du catalogue
 model Product {
   id          Int           @id @default(autoincrement())
-  name        String
-  price       Float
-  description String?
-  stocks      Stock[]
-  saleLines   SaleLine[]
-  refundLines RefundLine[]
+  name        String        @unique
+  price       Float         // Prix unitaire
+  description String?       // Description détaillée
+  stocks      Stock[]       // Stock dans différents magasins
+  saleLines   SaleLine[]    // Lignes de vente
+  refundLines RefundLine[]  // Lignes de remboursement
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 }
 
-// Utilisateur du système
-model User {
-  id       Int     @id @default(autoincrement())
-  name     String  @unique
-  role     String  @default("client")
-  password String
-  sales    Sale[]
-  refunds  Refund[]
+// Inventaire par magasin (table de jonction)
+model Stock {
+  id        Int     @id @default(autoincrement())
+  store     Store   @relation(fields: [storeId], references: [id])
+  storeId   Int
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
+  quantity  Int     @default(0) // Quantité disponible
+  
+  @@unique([storeId, productId]) // Un produit par magasin
+  @@index([storeId])
+  @@index([productId])
 }
 
-// Transaction de vente
+// Transaction de vente principale
 model Sale {
   id         Int        @id @default(autoincrement())
   date       DateTime   @default(now())
+  total      Float      // Total calculé
+  status     String     @default("active") // "active" | "completed" | "refunded" | "partially_refunded"
   user       User       @relation(fields: [userId], references: [id])
   userId     Int
   store      Store      @relation(fields: [storeId], references: [id])
   storeId    Int
-  saleLines  SaleLine[]
-  refunds    Refund[]
+  saleLines  SaleLine[] // Lignes de détail
+  refunds    Refund[]   // Remboursements associés
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  
+  @@index([userId])
+  @@index([storeId])
+  @@index([date])
+}
+
+// Ligne de détail de vente
+model SaleLine {
+  id        Int     @id @default(autoincrement())
+  sale      Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  saleId    Int
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
+  quantity  Int     // Quantité vendue
+  unitPrice Float   // Prix unitaire au moment de la vente
+  lineTotal Float   // Total de la ligne (quantity * unitPrice)
+  
+  @@index([saleId])
+  @@index([productId])
+}
+
+// Transaction de remboursement
+model Refund {
+  id          Int          @id @default(autoincrement())
+  date        DateTime     @default(now())
+  total       Float        // Total remboursé
+  reason      String       // Raison du remboursement
+  user        User         @relation(fields: [userId], references: [id])
+  userId      Int
+  store       Store        @relation(fields: [storeId], references: [id])
+  storeId     Int
+  sale        Sale         @relation(fields: [saleId], references: [id])
+  saleId      Int          // Vente originale
+  refundLines RefundLine[] // Lignes de détail du remboursement
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  @@index([userId])
+  @@index([storeId])
+  @@index([saleId])
+  @@index([date])
+}
+
+// Ligne de détail de remboursement
+model RefundLine {
+  id        Int     @id @default(autoincrement())
+  refund    Refund  @relation(fields: [refundId], references: [id], onDelete: Cascade)
+  refundId  Int
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
+  quantity  Int     // Quantité remboursée
+  unitPrice Float   // Prix unitaire remboursé
+  lineTotal Float   // Total de la ligne
+  
+  @@index([refundId])
+  @@index([productId])
 }
 ```
 
 ### 5.3 Architecture Interne des Services
 
-Chaque microservice suit le pattern **Clean Architecture** avec :
+Chaque microservice suit le pattern **Clean Architecture** avec infrastructure partagée :
 
-```
+```typescript
 services/[service-name]/
-├── domain/
-│   ├── entities/          # Entités métier
-│   ├── repositories/      # Interfaces de persistance
-│   └── services/          # Logique métier
-├── application/
-│   ├── usecases/          # Cas d'usage
-│   └── handlers/          # Gestionnaires de requêtes
-└── infrastructure/
-    ├── repositories/      # Implémentations concrètes
-    ├── database/          # Configuration DB
-    └── routes/            # Routes Express
+├── domain/                    # Logique métier pure
+│   ├── entities/              # Entités du domaine
+│   ├── repositories/          # Interfaces de persistance
+│   └── aggregates/            # Agrégats métier
+├── application/               # Cas d'usage applicatifs
+│   ├── use-cases/            # Implémentation des cas d'usage
+│   └── dtos/                 # Objets de transfert de données
+├── infrastructure/           # Préoccupations externes
+│   ├── database/             # Repositories avec shared infrastructure
+│   │   ├── shared-*.repository.ts  # Implémentations partagées
+│   │   └── *.repository.ts         # Adaptations spécifiques
+│   ├── http/                 # Contrôleurs REST
+│   │   └── *.controller.ts
+│   └── services/             # Services externes (HTTP calls)
+└── server.ts                 # Point d'entrée et configuration
+```
+
+#### 5.3.1 Infrastructure Partagée
+
+```typescript
+src/shared/infrastructure/
+├── database/                 # Gestion centralisée de la base
+│   ├── database-manager.ts   # Gestionnaire Prisma centralisé
+│   ├── base-repository.ts    # Repository de base générique
+│   └── cross-domain-queries.ts # Validation inter-domaines
+├── caching/                  # Cache Redis partagé
+│   ├── cache-service.ts      # Service de cache
+│   ├── redis-client.ts       # Client Redis configuré
+│   └── middleware.ts         # Middleware de cache HTTP
+├── logging/                  # Logging centralisé
+│   └── logger.ts             # Configuration Winston
+├── metrics/                  # Métriques Prometheus
+│   └── metrics.ts            # Collection de métriques
+└── http/                     # Client HTTP partagé
+    └── http-client.ts        # Client pour communication inter-services
 ```
 
 ---
@@ -895,5 +1081,5 @@ Les décisions architecturales prises (Kong Gateway, base de données partagée,
 Les risques identifiés et les dettes techniques fournissent une roadmap claire pour l'évolution future du système vers une architecture de production robuste.
 
 **Auteur** : Minh Khoi Le
-**Date** : 2025-07-08
-**Version** : 1.0
+**Date** : 2025-07-16
+**Version** : 2.0

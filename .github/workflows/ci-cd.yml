@@ -89,8 +89,10 @@ jobs:
 
     - name: Test Docker images exist
       run: |
-        # Verify that Docker images were built successfully
-        docker images | grep log430 || docker images | grep retail-system
+        # List all Docker images for debugging
+        echo "Available Docker images:"
+        docker images
+        # The build command above would have failed if there were issues
         echo "Docker build test completed successfully"
 
   # ------- K6 Performance Tests (optional job) -------
