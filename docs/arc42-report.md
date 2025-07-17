@@ -1,4 +1,15 @@
-# Rapport Arc42 - Système de Gestion de Magasin de Détail (LOG430 Lab 5)
+# Rapport Arc42 Lab5 - Système de Gestion de Magasin
+
+## Liens vers les dépôts Github
+
+- Lab0 : [https://github.com/Minh-Khoi-Le/log430-lab0.git](https://github.com/Minh-Khoi-Le/log430-lab0.git)
+- Lab1 : [https://github.com/Minh-Khoi-Le/log430-lab1-cli.git](https://github.com/Minh-Khoi-Le/log430-lab1-cli.git)
+- Lab2 : [https://github.com/Minh-Khoi-Le/log430-lab2.git](https://github.com/Minh-Khoi-Le/log430-lab2.git)
+- Lab3 : [https://github.com/Minh-Khoi-Le/log430-lab2/releases/tag/lab3](https://github.com/Minh-Khoi-Le/log430-lab2/releases/tag/lab3)
+- Lab4 : [https://github.com/Minh-Khoi-Le/log430-lab4.git](https://github.com/Minh-Khoi-Le/log430-lab4.git)
+- Lab5 : [https://github.com/Minh-Khoi-Le/log430-lab5.git](https://github.com/Minh-Khoi-Le/log430-lab5.git)
+
+---
 
 ## Table des Matières
 
