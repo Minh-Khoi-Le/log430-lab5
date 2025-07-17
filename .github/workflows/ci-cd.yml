@@ -46,7 +46,7 @@ jobs:
         node-version: 20
 
     - name: Install all dependencies (including workspaces)
-      run: cd src && npm ci
+      run: cd src && npm install
 
     - name: Generate Prisma client & migrate
       run: |
@@ -75,7 +75,7 @@ jobs:
         node-version: 20
 
     - name: Install frontend dependencies
-      run: cd src/web-client && npm ci
+      run: cd src/web-client && npm install
 
     - name: Run frontend linting
       run: cd src/web-client && npm run lint
@@ -120,7 +120,7 @@ jobs:
     - name: Install K6 test dependencies (if any)
       run: |
         if [ -f "k6/package.json" ]; then
-          cd k6 && npm ci
+          cd k6 && npm install
         fi
 
     - name: Wait for API to be ready
